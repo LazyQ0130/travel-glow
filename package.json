@@ -1,0 +1,27 @@
+{
+  "name": "travel-glow",
+  "version": "1.0.0",
+  "description": "旅光 Travel Glow full-stack practice project",
+  "main": "server/app.js",
+  "scripts": {
+    "dev": "nodemon server/app.js",
+    "start": "node server/app.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "node prisma/seed.js",
+    "setup": "npm install && npx prisma generate && npx prisma migrate dev --name init && npm run prisma:seed"
+  },
+  "dependencies": {
+    "@prisma/client": "6.8.2",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10",
+    "prisma": "6.8.2"
+  }
+}
