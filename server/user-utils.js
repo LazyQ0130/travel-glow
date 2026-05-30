@@ -1,8 +1,13 @@
 const prisma = require('./db');
+const { maskEmail, maskPhone } = require('./utils/mask');
 
 function publicUser(user) {
   const { passwordHash, failedLoginCount, lastFailedLoginAt, lockedUntil, deletedAt, ...safeUser } = user;
-  return safeUser;
+  return {
+    ...safeUser,
+    phone: maskPhone(safeUser.phone),
+    email: maskEmail(safeUser.email)
+  };
 }
 
 async function ensureUserSettings(userId) {

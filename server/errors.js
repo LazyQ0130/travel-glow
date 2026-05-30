@@ -13,9 +13,17 @@ class AppError extends Error {
 }
 
 function errorResponse(error) {
-  if (error instanceof AppError || error.statusCode) {
+  if (error.type === 'entity.too.large') {
     return {
-      statusCode: error.statusCode,
+      statusCode: 413,
+      body: { message: 'Request body is too large.', code: 'PAYLOAD_TOO_LARGE' }
+    };
+  }
+
+  if (error instanceof AppError || error.statusCode || error.status) {
+    const statusCode = error.statusCode || error.status;
+    return {
+      statusCode,
       body: {
         message: error.message,
         code: error.code || 'REQUEST_ERROR',

@@ -27,8 +27,8 @@ app.use(helmet({
 }));
 app.use(cors(corsOptions()));
 app.use(requestLogger());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use('/uploads', express.static(uploadDir));
 app.use(express.static(path.resolve(__dirname, '..', 'public')));
 

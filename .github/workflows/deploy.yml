@@ -1,0 +1,36 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-placeholder:
+    name: Deployment placeholder
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Validate deploy candidate
+        run: npm run check
+
+      - name: Deployment handoff
+        run: |
+          echo "部署占位流程已完成校验。"
+          echo "接入真实基础设施后，请在此处配置镜像推送、服务器连接、迁移和服务重启步骤。"
+          echo "建议 secrets: REGISTRY_URL, DEPLOY_HOST, DEPLOY_USER, DEPLOY_KEY, DATABASE_URL, JWT_SECRET。"

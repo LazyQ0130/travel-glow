@@ -15,6 +15,7 @@ const nodeFiles = [
   'server/sms.js',
   'server/upload.js',
   'server/user-utils.js',
+  'server/utils/mask.js',
   'server/middleware/auth.js',
   'server/middleware/rate-limit.js',
   'server/middleware/validate.js',
@@ -28,6 +29,7 @@ const nodeFiles = [
   'server/routes/photos.js',
   'server/routes/stats.js',
   'server/routes/map.js',
+  'scripts/backup.js',
   'public/me-app.js',
   'prisma/seed.js',
   'data/seed-data.js'
