@@ -1,6 +1,7 @@
 const express = require('express');
 const prisma = require('../db');
 const auth = require('../middleware/auth');
+const { activeWhere, activePhotosInclude } = require('../services/content-service');
 
 const router = express.Router();
 
@@ -33,8 +34,8 @@ async function buildStats(userId) {
   const [regions, checkins] = await Promise.all([
     prisma.region.findMany({ include: { parent: true } }),
     prisma.checkin.findMany({
-      where: { userId },
-      include: { region: { include: { parent: true } }, photos: true },
+      where: activeWhere({ userId }),
+      include: { region: { include: { parent: true } }, photos: activePhotosInclude() },
       orderBy: { checkinDate: 'desc' }
     })
   ]);

@@ -8,10 +8,13 @@ const auth = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const rateLimit = require('../middleware/rate-limit');
 const { writeAuditLog } = require('../audit');
-const { uploadAvatar, avatarDir, uploadDir, deleteLocalUpload } = require('../upload');
+const { uploadAvatar, uploadDir, deleteLocalUpload, validateUploadedFiles } = require('../upload');
 const { publicUser, ensureUserSettings } = require('../user-utils');
 const { buildStats } = require('./stats');
 const { verifySmsCode } = require('../sms');
+const { AppError } = require('../errors');
+const { passwordIssues } = require('../security/password-policy');
+const { activeWhere, activePhotosInclude } = require('../services/content-service');
 
 const router = express.Router();
 
@@ -32,7 +35,7 @@ const phoneSchema = z.object({
 
 const passwordSchema = z.object({
   oldPassword: z.string().min(1),
-  newPassword: z.string().min(6).max(72)
+  newPassword: z.string().min(1).max(72)
 });
 
 const settingsSchema = z.object({
@@ -142,7 +145,8 @@ router.put('/phone', auth, sensitiveLimiter, validate(phoneSchema), async (req, 
 
 router.post('/avatar', auth, writeLimiter, uploadAvatar.single('avatar'), async (req, res, next) => {
   try {
-    if (!req.file) return res.status(400).json({ message: '请上传头像图片' });
+    if (!req.file) throw new AppError(400, 'Please upload an avatar image.', 'UPLOAD_REQUIRED');
+    await validateUploadedFiles([req.file]);
     const avatar = `/uploads/avatars/${req.file.filename}`;
     const oldAvatar = req.user.avatar;
     const user = await prisma.user.update({
@@ -161,11 +165,12 @@ router.post('/avatar', auth, writeLimiter, uploadAvatar.single('avatar'), async 
 router.put('/password', auth, sensitiveLimiter, validate(passwordSchema), async (req, res, next) => {
   try {
     const { oldPassword, newPassword } = req.body;
-    if (!newPassword || newPassword.length < 6) {
-      return res.status(400).json({ message: '新密码至少 6 位' });
+    const issues = passwordIssues(newPassword);
+    if (issues.length) {
+      throw new AppError(400, 'Password does not meet strength requirements.', 'WEAK_PASSWORD', issues);
     }
     const ok = await bcrypt.compare(oldPassword || '', req.user.passwordHash);
-    if (!ok) return res.status(400).json({ message: '旧密码不正确' });
+    if (!ok) throw new AppError(400, 'Old password is incorrect.', 'INVALID_OLD_PASSWORD');
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({ where: { id: req.user.id }, data: { passwordHash } });
     await prisma.loginSession.updateMany({
@@ -177,7 +182,7 @@ router.put('/password', auth, sensitiveLimiter, validate(passwordSchema), async 
       data: { revokedAt: new Date() }
     });
     await writeAuditLog(req, 'user.password.update');
-    res.json({ message: '密码已修改' });
+    res.json({ message: 'Password updated.' });
   } catch (error) {
     next(error);
   }
@@ -208,8 +213,8 @@ router.put('/settings', auth, writeLimiter, validate(settingsSchema), async (req
 router.get('/storage', auth, async (req, res, next) => {
   try {
     const [photoCount, checkinCount, uploadFolderSize] = await Promise.all([
-      prisma.photo.count({ where: { userId: req.user.id } }),
-      prisma.checkin.count({ where: { userId: req.user.id } }),
+      prisma.photo.count({ where: activeWhere({ userId: req.user.id }) }),
+      prisma.checkin.count({ where: activeWhere({ userId: req.user.id }) }),
       folderSize(uploadDir).catch(() => 0)
     ]);
     res.json({
@@ -228,12 +233,12 @@ router.post('/export', auth, async (req, res, next) => {
     const [settings, checkins, photos, stats] = await Promise.all([
       ensureUserSettings(req.user.id),
       prisma.checkin.findMany({
-        where: { userId: req.user.id },
-        include: { region: { include: { parent: true } }, photos: true },
+        where: activeWhere({ userId: req.user.id }),
+        include: { region: { include: { parent: true } }, photos: activePhotosInclude() },
         orderBy: { checkinDate: 'desc' }
       }),
       prisma.photo.findMany({
-        where: { userId: req.user.id },
+        where: activeWhere({ userId: req.user.id }),
         include: { checkin: { include: { region: { include: { parent: true } } } } },
         orderBy: { createdAt: 'desc' }
       }),
@@ -255,30 +260,35 @@ router.post('/export', auth, async (req, res, next) => {
 });
 
 router.delete('/cache', auth, async (req, res) => {
-  res.json({ message: '本地缓存已清理' });
+  res.json({ message: 'Local cache cleared.' });
 });
 
 router.delete('/account', auth, sensitiveLimiter, validate(deleteAccountSchema), async (req, res, next) => {
   try {
-    const { password, confirmText } = req.body;
-    if (confirmText !== 'DELETE') {
-      return res.status(400).json({ message: '请输入 DELETE 确认注销', code: 'DELETE_CONFIRM_REQUIRED' });
-    }
+    const { password } = req.body;
     const ok = await bcrypt.compare(password || '', req.user.passwordHash);
-    if (!ok) return res.status(400).json({ message: '密码不正确' });
+    if (!ok) throw new AppError(400, 'Password is incorrect.', 'INVALID_PASSWORD');
 
-    const photos = await prisma.photo.findMany({ where: { userId: req.user.id } });
-    await prisma.photo.deleteMany({ where: { userId: req.user.id } });
-    await prisma.checkin.deleteMany({ where: { userId: req.user.id } });
-    await prisma.loginSession.deleteMany({ where: { userId: req.user.id } });
-    await prisma.userSettings.deleteMany({ where: { userId: req.user.id } });
-    await prisma.auditLog.deleteMany({ where: { userId: req.user.id } });
-    await prisma.user.delete({ where: { id: req.user.id } });
+    const now = new Date();
+    const photos = await prisma.photo.findMany({ where: activeWhere({ userId: req.user.id }) });
+    await prisma.photo.updateMany({ where: activeWhere({ userId: req.user.id }), data: { deletedAt: now } });
+    await prisma.checkin.updateMany({ where: activeWhere({ userId: req.user.id }), data: { deletedAt: now } });
+    await prisma.loginSession.updateMany({ where: { userId: req.user.id, revokedAt: null }, data: { revokedAt: now } });
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: {
+        deletedAt: now,
+        email: null,
+        phone: null,
+        username: null
+      }
+    });
     for (const photo of photos) {
       await deleteLocalUpload(photo.imageUrl);
     }
     await deleteLocalUpload(req.user.avatar);
-    res.json({ message: '账号已注销' });
+    await writeAuditLog(req, 'user.account.soft_delete', { userId: req.user.id });
+    res.json({ message: 'Account deleted.' });
   } catch (error) {
     next(error);
   }

@@ -1,5 +1,7 @@
 const bcrypt = require('bcryptjs');
 const prisma = require('./db');
+const { config } = require('./config');
+const { AppError } = require('./errors');
 
 const CODE_TTL_MINUTES = 5;
 const SEND_COOLDOWN_SECONDS = 60;
@@ -20,9 +22,7 @@ function createCode() {
 async function createSmsCode({ phone, purpose, userId = null, ipAddress = '' }) {
   const normalized = normalizePhone(phone);
   if (!isValidPhone(normalized)) {
-    const error = new Error('请输入有效手机号');
-    error.statusCode = 400;
-    throw error;
+    throw new AppError(400, 'Please enter a valid phone number.', 'INVALID_PHONE');
   }
 
   const recent = await prisma.verificationCode.findFirst({
@@ -35,9 +35,7 @@ async function createSmsCode({ phone, purpose, userId = null, ipAddress = '' }) 
     orderBy: { createdAt: 'desc' }
   });
   if (recent) {
-    const error = new Error('验证码发送过于频繁，请稍后再试');
-    error.statusCode = 429;
-    throw error;
+    throw new AppError(429, 'Verification code was requested too recently.', 'SMS_RATE_LIMITED');
   }
 
   const code = createCode();
@@ -52,11 +50,10 @@ async function createSmsCode({ phone, purpose, userId = null, ipAddress = '' }) 
     }
   });
 
-  // 本地练手项目默认走开发模式：返回 devCode。接入真实短信时在这里调用服务商 SDK。
   return {
     phone: normalized,
     expiresIn: CODE_TTL_MINUTES * 60,
-    devCode: process.env.SMS_PROVIDER === 'mock' || process.env.NODE_ENV !== 'production' ? code : undefined
+    devCode: config.smsProvider === 'mock' || !config.isProduction ? code : undefined
   };
 }
 
@@ -71,14 +68,10 @@ async function verifySmsCode({ phone, purpose, code }) {
     orderBy: { createdAt: 'desc' }
   });
   if (!record || record.expiresAt < new Date()) {
-    const error = new Error('验证码不存在或已过期');
-    error.statusCode = 400;
-    throw error;
+    throw new AppError(400, 'Verification code does not exist or has expired.', 'SMS_CODE_EXPIRED');
   }
   if (record.attempts >= MAX_ATTEMPTS) {
-    const error = new Error('验证码尝试次数过多，请重新获取');
-    error.statusCode = 400;
-    throw error;
+    throw new AppError(400, 'Too many verification attempts. Request a new code.', 'SMS_CODE_LOCKED');
   }
 
   const ok = await bcrypt.compare(String(code || ''), record.codeHash);
@@ -87,9 +80,7 @@ async function verifySmsCode({ phone, purpose, code }) {
       where: { id: record.id },
       data: { attempts: { increment: 1 } }
     });
-    const error = new Error('验证码错误');
-    error.statusCode = 400;
-    throw error;
+    throw new AppError(400, 'Verification code is incorrect.', 'SMS_CODE_INVALID');
   }
 
   await prisma.verificationCode.update({

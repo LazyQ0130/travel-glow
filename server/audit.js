@@ -1,4 +1,5 @@
 const prisma = require('./db');
+const { logger } = require('./logger');
 
 async function writeAuditLog(req, action, metadata = {}) {
   try {
@@ -12,7 +13,7 @@ async function writeAuditLog(req, action, metadata = {}) {
       }
     });
   } catch (error) {
-    console.warn(`Audit log failed: ${action}`, error.message);
+    logger.warn({ err: error, action }, 'Audit log failed.');
   }
 }
 

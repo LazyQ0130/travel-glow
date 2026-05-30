@@ -1,14 +1,15 @@
 const express = require('express');
 const prisma = require('../db');
 const auth = require('../middleware/auth');
+const { activeWhere, activePhotosInclude } = require('../services/content-service');
 
 const router = express.Router();
 
 async function checkinsForRegions(userId, regionIds) {
   if (!regionIds.length) return [];
   return prisma.checkin.findMany({
-    where: { userId, regionId: { in: regionIds } },
-    include: { photos: true, region: { include: { parent: true } } },
+    where: activeWhere({ userId, regionId: { in: regionIds } }),
+    include: { photos: activePhotosInclude(), region: { include: { parent: true } } },
     orderBy: { checkinDate: 'desc' }
   });
 }
@@ -174,8 +175,8 @@ router.get('/:id/checkins', auth, async (req, res, next) => {
       ? region.children.map((child) => child.id)
       : [region.id];
     const checkins = await prisma.checkin.findMany({
-      where: { userId: req.user.id, regionId: { in: regionIds } },
-      include: { region: { include: { parent: true } }, photos: true },
+      where: activeWhere({ userId: req.user.id, regionId: { in: regionIds } }),
+      include: { region: { include: { parent: true } }, photos: activePhotosInclude() },
       orderBy: { checkinDate: 'desc' }
     });
     res.json(checkins);

@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const prisma = require('../db');
+const { config } = require('../config');
 
 async function auth(req, res, next) {
   try {
@@ -9,7 +10,7 @@ async function auth(req, res, next) {
       return res.status(401).json({ message: '请先登录' });
     }
 
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
+    const payload = jwt.verify(token, config.jwtSecret);
     if (!payload.sessionId) {
       return res.status(401).json({ message: '登录状态已失效', code: 'SESSION_REQUIRED' });
     }
@@ -23,7 +24,7 @@ async function auth(req, res, next) {
     if (!session) {
       return res.status(401).json({ message: '登录状态已失效', code: 'SESSION_REVOKED' });
     }
-    const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+    const user = await prisma.user.findFirst({ where: { id: payload.userId, deletedAt: null } });
     if (!user) {
       return res.status(401).json({ message: '登录状态已失效' });
     }

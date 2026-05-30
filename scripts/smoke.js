@@ -1,3 +1,5 @@
+process.env.LOG_LEVEL = process.env.LOG_LEVEL || 'silent';
+
 const app = require('../server/app');
 const prisma = require('../server/db');
 

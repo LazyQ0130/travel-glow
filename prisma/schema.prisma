@@ -20,6 +20,10 @@ model User {
   bio          String?
   level        Int       @default(1)
   exp          Int       @default(0)
+  failedLoginCount Int   @default(0)
+  lastFailedLoginAt DateTime?
+  lockedUntil  DateTime?
+  deletedAt    DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   checkins     Checkin[]
@@ -27,6 +31,8 @@ model User {
   settings     UserSettings?
   sessions     LoginSession[]
   verificationCodes VerificationCode[]
+
+  @@index([deletedAt])
 }
 
 model VerificationCode {
@@ -43,6 +49,7 @@ model VerificationCode {
   user       User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([phone, purpose])
+  @@index([phone, purpose, consumedAt])
   @@index([userId])
 }
 
@@ -77,6 +84,7 @@ model LoginSession {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, revokedAt])
 }
 
 model AuditLog {
@@ -90,6 +98,7 @@ model AuditLog {
 
   @@index([userId])
   @@index([action])
+  @@index([createdAt])
 }
 
 model Region {
@@ -119,6 +128,7 @@ model Checkin {
   checkinDate DateTime
   note        String?
   title       String?
+  deletedAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -127,6 +137,8 @@ model Checkin {
 
   @@index([userId])
   @@index([regionId])
+  @@index([userId, deletedAt, checkinDate])
+  @@index([regionId, deletedAt])
 }
 
 model Photo {
@@ -137,10 +149,13 @@ model Photo {
   originalName String?
   mimeType     String?
   size         Int?
+  deletedAt    DateTime?
   createdAt    DateTime @default(now())
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   checkin      Checkin  @relation(fields: [checkinId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([checkinId])
+  @@index([userId, deletedAt, createdAt])
+  @@index([checkinId, deletedAt])
 }

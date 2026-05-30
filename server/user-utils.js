@@ -1,7 +1,7 @@
 const prisma = require('./db');
 
 function publicUser(user) {
-  const { passwordHash, ...safeUser } = user;
+  const { passwordHash, failedLoginCount, lastFailedLoginAt, lockedUntil, deletedAt, ...safeUser } = user;
   return safeUser;
 }
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const prisma = require('../db');
 const auth = require('../middleware/auth');
+const { activeWhere } = require('../services/content-service');
 
 const router = express.Router();
 
@@ -11,7 +12,7 @@ function unique(values) {
 router.get('/china/lit-regions', auth, async (req, res, next) => {
   try {
     const checkins = await prisma.checkin.findMany({
-      where: { userId: req.user.id, region: { type: 'city' } },
+      where: activeWhere({ userId: req.user.id, region: { type: 'city' } }),
       include: { region: true }
     });
     res.json({
@@ -26,7 +27,7 @@ router.get('/china/lit-regions', auth, async (req, res, next) => {
 router.get('/world/lit-regions', auth, async (req, res, next) => {
   try {
     const checkins = await prisma.checkin.findMany({
-      where: { userId: req.user.id, region: { type: { in: ['country', 'special'] } } },
+      where: activeWhere({ userId: req.user.id, region: { type: { in: ['country', 'special'] } } }),
       include: { region: true }
     });
     res.json({

@@ -1,17 +1,20 @@
 {
   "name": "travel-glow",
   "version": "1.0.0",
-  "description": "旅光 Travel Glow full-stack practice project",
+  "description": "Travel Glow full-stack travel check-in project",
   "main": "server/app.js",
   "scripts": {
     "dev": "nodemon server/app.js",
     "start": "node server/app.js",
+    "start:prod": "node server/start.js",
     "test": "node --test tests/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage tests/*.test.js",
     "check:syntax": "node scripts/check-syntax.js",
     "check:smoke": "node scripts/smoke.js",
     "check": "npx prisma validate && npm run check:syntax && npm test && npm run check:smoke",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "node prisma/seed.js",
     "setup": "npm install && npx prisma generate && npx prisma migrate dev --name init && npm run prisma:seed"
   },
@@ -21,8 +24,11 @@
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^4.19.2",
+    "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

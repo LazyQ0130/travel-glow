@@ -9,11 +9,15 @@ const rateLimit = require('../middleware/rate-limit');
 const { writeAuditLog } = require('../audit');
 const { publicUser, ensureUserSettings, sessionMeta } = require('../user-utils');
 const { normalizePhone, createSmsCode, verifySmsCode } = require('../sms');
+const { config } = require('../config');
+const { AppError } = require('../errors');
+const { passwordIssues } = require('../security/password-policy');
+const { assertNotLocked, recordFailedLogin, clearFailedLogins } = require('../services/auth-service');
 
 const router = express.Router();
 
 const usernameSchema = z.string().trim().min(3).max(24).regex(/^[a-zA-Z0-9_]+$/);
-const passwordSchema = z.string().min(6).max(72);
+const passwordSchema = z.string().min(1).max(72);
 const optionalEmailSchema = z.union([z.literal(''), z.string().trim().email()]).optional();
 
 const sendSmsSchema = z.object({
@@ -34,7 +38,7 @@ const loginSchema = z.object({
   identifier: z.string().trim().min(1).optional(),
   email: z.string().trim().min(1).optional(),
   password: z.string().min(1)
-}).refine((data) => data.identifier || data.email, { message: '请输入账号名、手机号或邮箱' });
+}).refine((data) => data.identifier || data.email, { message: 'Identifier or email is required.' });
 
 const phoneLoginSchema = z.object({
   phone: z.string().trim().min(8).max(20),
@@ -42,7 +46,7 @@ const phoneLoginSchema = z.object({
 });
 
 function signToken(user, session) {
-  return jwt.sign({ userId: user.id, sessionId: session.id }, process.env.JWT_SECRET || 'dev-secret', { expiresIn: '30d' });
+  return jwt.sign({ userId: user.id, sessionId: session.id }, config.jwtSecret, { expiresIn: config.jwtExpiresIn });
 }
 
 async function createSession(req, userId) {
@@ -67,6 +71,7 @@ async function findUserByIdentifier(identifier = '') {
   const normalizedPhone = normalizePhone(value);
   return prisma.user.findFirst({
     where: {
+      deletedAt: null,
       OR: [
         { username: normalizeUsername(value) },
         { email: normalizeEmail(value) },
@@ -76,21 +81,25 @@ async function findUserByIdentifier(identifier = '') {
   });
 }
 
+function assertStrongPassword(password) {
+  const issues = passwordIssues(password);
+  if (issues.length) {
+    throw new AppError(400, 'Password does not meet strength requirements.', 'WEAK_PASSWORD', issues);
+  }
+}
+
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, keyPrefix: 'auth' });
 const smsLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, keyPrefix: 'sms' });
 
 router.post('/sms/send', smsLimiter, validate(sendSmsSchema), async (req, res, next) => {
   try {
     const { phone, purpose = 'login' } = req.body;
-    if (!['register', 'login', 'bind_phone'].includes(purpose)) {
-      return res.status(400).json({ message: '验证码用途不正确' });
-    }
     const result = await createSmsCode({
       phone,
       purpose,
       ipAddress: req.ip || req.socket?.remoteAddress || ''
     });
-    res.json({ message: '验证码已发送', ...result });
+    res.json({ message: 'Verification code sent.', ...result });
   } catch (error) {
     next(error);
   }
@@ -99,12 +108,8 @@ router.post('/sms/send', smsLimiter, validate(sendSmsSchema), async (req, res, n
 router.post('/register', authLimiter, validate(registerSchema), async (req, res, next) => {
   try {
     const { username, nickname, email, phone, password, code } = req.body;
-    if (!username || !nickname || !phone || !password || !code) {
-      return res.status(400).json({ message: '账号名、昵称、手机号、密码、验证码都不能为空' });
-    }
-    if (password.length < 6) {
-      return res.status(400).json({ message: '密码至少 6 位' });
-    }
+    assertStrongPassword(password);
+
     const cleanUsername = normalizeUsername(username);
     const cleanEmail = email ? normalizeEmail(email) : null;
     const cleanPhone = await verifySmsCode({ phone, purpose: 'register', code });
@@ -128,9 +133,6 @@ router.post('/register', authLimiter, validate(registerSchema), async (req, res,
 
     res.json({ token: signToken(user, session), user: publicUser(user) });
   } catch (error) {
-    if (error.code === 'P2002') {
-      return res.status(409).json({ message: '账号名、邮箱或手机号已被使用' });
-    }
     next(error);
   }
 });
@@ -140,13 +142,17 @@ router.post('/login', authLimiter, validate(loginSchema), async (req, res, next)
     const { identifier, email, password } = req.body;
     const user = await findUserByIdentifier(identifier || email);
     if (!user) {
-      return res.status(401).json({ message: '账号或密码错误', code: 'INVALID_CREDENTIALS' });
+      throw new AppError(401, 'Invalid account or password.', 'INVALID_CREDENTIALS');
     }
 
+    assertNotLocked(user);
     const ok = await bcrypt.compare(password || '', user.passwordHash);
     if (!ok) {
-      return res.status(401).json({ message: '账号或密码错误', code: 'INVALID_CREDENTIALS' });
+      await recordFailedLogin(user);
+      throw new AppError(401, 'Invalid account or password.', 'INVALID_CREDENTIALS');
     }
+
+    await clearFailedLogins(user.id);
     await ensureUserSettings(user.id);
     const session = await createSession(req, user.id);
     await writeAuditLog(req, 'auth.login', { userId: user.id, method: 'password' });
@@ -161,8 +167,11 @@ router.post('/login/phone', authLimiter, validate(phoneLoginSchema), async (req,
   try {
     const { phone, code } = req.body;
     const cleanPhone = await verifySmsCode({ phone, purpose: 'login', code });
-    const user = await prisma.user.findUnique({ where: { phone: cleanPhone } });
-    if (!user) return res.status(401).json({ message: '手机号未注册' });
+    const user = await prisma.user.findFirst({ where: { phone: cleanPhone, deletedAt: null } });
+    if (!user) throw new AppError(401, 'Phone number is not registered.', 'PHONE_NOT_REGISTERED');
+
+    assertNotLocked(user);
+    await clearFailedLogins(user.id);
     await ensureUserSettings(user.id);
     const session = await createSession(req, user.id);
     await writeAuditLog(req, 'auth.login', { userId: user.id, method: 'phone' });
@@ -172,13 +181,17 @@ router.post('/login/phone', authLimiter, validate(phoneLoginSchema), async (req,
   }
 });
 
-router.post('/logout', auth, async (req, res) => {
-  await prisma.loginSession.update({
-    where: { id: req.session.id },
-    data: { revokedAt: new Date() }
-  });
-  await writeAuditLog(req, 'auth.logout', { sessionId: req.session.id });
-  res.json({ message: '已退出登录' });
+router.post('/logout', auth, async (req, res, next) => {
+  try {
+    await prisma.loginSession.update({
+      where: { id: req.session.id },
+      data: { revokedAt: new Date() }
+    });
+    await writeAuditLog(req, 'auth.logout', { sessionId: req.session.id });
+    res.json({ message: 'Logged out.' });
+  } catch (error) {
+    next(error);
+  }
 });
 
 router.get('/me', auth, async (req, res, next) => {
@@ -206,7 +219,7 @@ router.delete('/sessions/others', auth, async (req, res, next) => {
       data: { revokedAt: new Date() }
     });
     await writeAuditLog(req, 'auth.session.revoke_others', { count: result.count });
-    res.json({ message: '其他设备已退出登录', count: result.count });
+    res.json({ message: 'Other sessions revoked.', count: result.count });
   } catch (error) {
     next(error);
   }
@@ -217,13 +230,13 @@ router.delete('/sessions/:id', auth, async (req, res, next) => {
     const session = await prisma.loginSession.findFirst({
       where: { id: req.params.id, userId: req.user.id, revokedAt: null }
     });
-    if (!session) return res.status(404).json({ message: '登录设备不存在', code: 'SESSION_NOT_FOUND' });
+    if (!session) throw new AppError(404, 'Session not found.', 'SESSION_NOT_FOUND');
     await prisma.loginSession.update({
       where: { id: session.id },
       data: { revokedAt: new Date() }
     });
     await writeAuditLog(req, 'auth.session.revoke', { sessionId: session.id });
-    res.json({ message: '设备已退出登录' });
+    res.json({ message: 'Session revoked.' });
   } catch (error) {
     next(error);
   }
