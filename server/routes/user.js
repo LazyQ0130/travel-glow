@@ -12,6 +12,7 @@ const { uploadAvatar, uploadDir, deleteLocalUpload, validateUploadedFiles } = re
 const { publicUser, ensureUserSettings } = require('../user-utils');
 const { buildStats } = require('./stats');
 const { verifySmsCode } = require('../sms');
+const { createEmailCode, verifyEmailCode, normalizeEmail } = require('../email-verification');
 const { AppError } = require('../errors');
 const { passwordIssues } = require('../security/password-policy');
 const { activeWhere, activePhotosInclude } = require('../services/content-service');
@@ -19,7 +20,7 @@ const { activeWhere, activePhotosInclude } = require('../services/content-servic
 const router = express.Router();
 
 const writeLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60, keyPrefix: 'user-write' });
-const sensitiveLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, keyPrefix: 'user-sensitive' });
+const sensitiveLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, keyPrefix: 'user-sensitive' });
 
 const profileSchema = z.object({
   username: z.string().trim().min(3).max(24).regex(/^[a-zA-Z0-9_]+$/).optional(),
@@ -29,13 +30,29 @@ const profileSchema = z.object({
 });
 
 const phoneSchema = z.object({
+  password: z.string().min(1),
   phone: z.string().trim().min(8).max(20),
   code: z.string().trim().length(6)
 });
 
 const passwordSchema = z.object({
   oldPassword: z.string().min(1),
-  newPassword: z.string().min(1).max(72)
+  newPassword: z.string().min(1).max(72),
+  revokeOtherSessions: z.boolean().optional().default(true)
+});
+
+const verifyPasswordSchema = z.object({
+  password: z.string().min(1)
+});
+
+const emailCodeSchema = z.object({
+  email: z.string().trim().email()
+});
+
+const emailSchema = z.object({
+  password: z.string().min(1),
+  email: z.string().trim().email(),
+  code: z.string().trim().length(6)
 });
 
 const settingsSchema = z.object({
@@ -95,6 +112,33 @@ function formatBytes(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+async function assertCurrentPassword(user, password, code = 'INVALID_PASSWORD') {
+  const ok = await bcrypt.compare(password || '', user.passwordHash);
+  if (!ok) throw new AppError(400, 'Password is incorrect.', code);
+}
+
+async function assertEmailAvailable(email, userId) {
+  const existing = await prisma.user.findFirst({
+    where: {
+      email: normalizeEmail(email),
+      deletedAt: null,
+      id: { not: userId }
+    }
+  });
+  if (existing) throw new AppError(409, 'Email is already in use.', 'EMAIL_IN_USE');
+}
+
+async function assertPhoneAvailable(phone, userId) {
+  const existing = await prisma.user.findFirst({
+    where: {
+      phone,
+      deletedAt: null,
+      id: { not: userId }
+    }
+  });
+  if (existing) throw new AppError(409, 'Phone number is already in use.', 'PHONE_IN_USE');
+}
+
 router.get('/profile', auth, async (req, res, next) => {
   try {
     const settings = await ensureUserSettings(req.user.id);
@@ -124,10 +168,22 @@ router.put('/profile', auth, writeLimiter, validate(profileSchema), async (req, 
   }
 });
 
+router.post('/security/verify-password', auth, sensitiveLimiter, validate(verifyPasswordSchema), async (req, res, next) => {
+  try {
+    await assertCurrentPassword(req.user, req.body.password);
+    await writeAuditLog(req, 'user.security.verify_password');
+    res.json({ verified: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.put('/phone', auth, sensitiveLimiter, validate(phoneSchema), async (req, res, next) => {
   try {
-    const { phone, code } = req.body;
+    const { password, phone, code } = req.body;
+    await assertCurrentPassword(req.user, password);
     const cleanPhone = await verifySmsCode({ phone, purpose: 'bind_phone', code });
+    await assertPhoneAvailable(cleanPhone, req.user.id);
     const user = await prisma.user.update({
       where: { id: req.user.id },
       data: {
@@ -137,6 +193,44 @@ router.put('/phone', auth, sensitiveLimiter, validate(phoneSchema), async (req, 
     });
     const settings = await ensureUserSettings(req.user.id);
     await writeAuditLog(req, 'user.phone.update');
+    res.json({ ...publicUser(user), settings });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/email/code', auth, sensitiveLimiter, validate(emailCodeSchema), async (req, res, next) => {
+  try {
+    const email = normalizeEmail(req.body.email);
+    await assertEmailAvailable(email, req.user.id);
+    const result = await createEmailCode({
+      email,
+      purpose: 'bind_email',
+      userId: req.user.id,
+      ipAddress: req.ip || req.socket?.remoteAddress || ''
+    });
+    await writeAuditLog(req, 'user.email.code_send');
+    res.json({ message: 'Verification code sent.', ...result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/email', auth, sensitiveLimiter, validate(emailSchema), async (req, res, next) => {
+  try {
+    const { password, email, code } = req.body;
+    await assertCurrentPassword(req.user, password);
+    await assertEmailAvailable(email, req.user.id);
+    const cleanEmail = await verifyEmailCode({ email, purpose: 'bind_email', code });
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data: {
+        email: cleanEmail,
+        emailVerifiedAt: new Date()
+      }
+    });
+    const settings = await ensureUserSettings(req.user.id);
+    await writeAuditLog(req, 'user.email.update');
     res.json({ ...publicUser(user), settings });
   } catch (error) {
     next(error);
@@ -164,25 +258,28 @@ router.post('/avatar', auth, writeLimiter, uploadAvatar.single('avatar'), async 
 
 router.put('/password', auth, sensitiveLimiter, validate(passwordSchema), async (req, res, next) => {
   try {
-    const { oldPassword, newPassword } = req.body;
+    const { oldPassword, newPassword, revokeOtherSessions } = req.body;
     const issues = passwordIssues(newPassword);
     if (issues.length) {
       throw new AppError(400, 'Password does not meet strength requirements.', 'WEAK_PASSWORD', issues);
     }
-    const ok = await bcrypt.compare(oldPassword || '', req.user.passwordHash);
-    if (!ok) throw new AppError(400, 'Old password is incorrect.', 'INVALID_OLD_PASSWORD');
+    await assertCurrentPassword(req.user, oldPassword, 'INVALID_OLD_PASSWORD');
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await prisma.user.update({ where: { id: req.user.id }, data: { passwordHash } });
-    await prisma.loginSession.updateMany({
-      where: {
-        userId: req.user.id,
-        id: { not: req.session.id },
-        revokedAt: null
-      },
-      data: { revokedAt: new Date() }
-    });
-    await writeAuditLog(req, 'user.password.update');
-    res.json({ message: 'Password updated.' });
+    let revokedSessions = 0;
+    if (revokeOtherSessions) {
+      const result = await prisma.loginSession.updateMany({
+        where: {
+          userId: req.user.id,
+          id: { not: req.session.id },
+          revokedAt: null
+        },
+        data: { revokedAt: new Date() }
+      });
+      revokedSessions = result.count;
+    }
+    await writeAuditLog(req, 'user.password.update', { revokeOtherSessions, revokedSessions });
+    res.json({ message: 'Password updated.', revokedSessions });
   } catch (error) {
     next(error);
   }

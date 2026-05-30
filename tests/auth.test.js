@@ -24,6 +24,31 @@ async function json(response) {
   return response.json().catch(() => ({}));
 }
 
+async function createAuthUser(prefix, password = 'TravelGlow!2026', extra = {}) {
+  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const username = `${prefix}_${suffix}`.slice(0, 24);
+  const user = await prisma.user.create({
+    data: {
+      username,
+      nickname: `${prefix} Test`,
+      passwordHash: await bcrypt.hash(password, 10),
+      settings: { create: {} },
+      ...extra
+    }
+  });
+  return { user, username, password };
+}
+
+async function loginAs(identifier, password) {
+  const response = await request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ identifier, password })
+  });
+  const body = await json(response);
+  assert.equal(response.status, 200);
+  return body;
+}
+
 test.before(async () => {
   server = await new Promise((resolve) => {
     const instance = app.listen(0, () => resolve(instance));
@@ -186,6 +211,171 @@ test('settings update persists for the current user', async () => {
   const me = await json(meResponse);
   assert.equal(me.settings.mapTheme, 'aurora');
   assert.equal(me.settings.glowColor, 'emerald');
+});
+
+test('security password verification validates the current password', async () => {
+  const { user, username, password } = await createAuthUser('verify');
+  const login = await loginAs(username, password);
+
+  const badResponse = await request('/user/security/verify-password', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${login.token}` },
+    body: JSON.stringify({ password: 'wrong-password' })
+  });
+  const bad = await json(badResponse);
+  assert.equal(badResponse.status, 400);
+  assert.equal(bad.code, 'INVALID_PASSWORD');
+
+  const okResponse = await request('/user/security/verify-password', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${login.token}` },
+    body: JSON.stringify({ password })
+  });
+  const ok = await json(okResponse);
+  assert.equal(okResponse.status, 200);
+  assert.equal(ok.verified, true);
+
+  await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), username: null } });
+});
+
+test('password update can preserve or revoke other sessions', async () => {
+  const originalPassword = 'TravelGlow!2026';
+  const { user, username } = await createAuthUser('pwflow', originalPassword);
+  const first = await loginAs(username, originalPassword);
+  const second = await loginAs(username, originalPassword);
+
+  const preserveResponse = await request('/user/password', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${first.token}` },
+    body: JSON.stringify({
+      oldPassword: originalPassword,
+      newPassword: 'TravelGlow!2027',
+      revokeOtherSessions: false
+    })
+  });
+  assert.equal(preserveResponse.status, 200);
+
+  const stillActiveResponse = await request('/auth/me', {
+    headers: { Authorization: `Bearer ${second.token}` }
+  });
+  assert.equal(stillActiveResponse.status, 200);
+
+  const third = await loginAs(username, 'TravelGlow!2027');
+  const revokeResponse = await request('/user/password', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${third.token}` },
+    body: JSON.stringify({
+      oldPassword: 'TravelGlow!2027',
+      newPassword: 'TravelGlow!2028',
+      revokeOtherSessions: true
+    })
+  });
+  const revoke = await json(revokeResponse);
+  assert.equal(revokeResponse.status, 200);
+  assert.ok(revoke.revokedSessions >= 1);
+
+  const revokedResponse = await request('/auth/me', {
+    headers: { Authorization: `Bearer ${second.token}` }
+  });
+  assert.equal(revokedResponse.status, 401);
+
+  await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), username: null } });
+});
+
+test('phone binding requires both password and verification code', async () => {
+  const password = 'TravelGlow!2026';
+  const { user, username } = await createAuthUser('phonebind', password, { phone: `137${Date.now().toString().slice(-8)}` });
+  const login = await loginAs(username, password);
+  const nextPhone = `136${Date.now().toString().slice(-8)}`;
+
+  const codeResponse = await request('/auth/sms/send', {
+    method: 'POST',
+    body: JSON.stringify({ phone: nextPhone, purpose: 'bind_phone' })
+  });
+  const code = await json(codeResponse);
+  assert.equal(codeResponse.status, 200);
+  assert.match(code.devCode, /^\d{6}$/);
+
+  const badPasswordResponse = await request('/user/phone', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${login.token}` },
+    body: JSON.stringify({ password: 'wrong-password', phone: nextPhone, code: code.devCode })
+  });
+  const badPassword = await json(badPasswordResponse);
+  assert.equal(badPasswordResponse.status, 400);
+  assert.equal(badPassword.code, 'INVALID_PASSWORD');
+
+  const bindResponse = await request('/user/phone', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${login.token}` },
+    body: JSON.stringify({ password, phone: nextPhone, code: code.devCode })
+  });
+  const bind = await json(bindResponse);
+  assert.equal(bindResponse.status, 200);
+  assert.match(bind.phone, /\*/);
+
+  await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), username: null, phone: null } });
+});
+
+test('email verification binds a new email and rejects duplicates', async () => {
+  const password = 'TravelGlow!2026';
+  const { user, username } = await createAuthUser('emailbind', password);
+  const taken = await createAuthUser('emailtaken', password, { email: `taken-${Date.now()}@travelglow.local` });
+  const login = await loginAs(username, password);
+  const nextEmail = `new-${Date.now()}@travelglow.local`;
+
+  const duplicateCodeResponse = await request('/user/email/code', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${login.token}` },
+    body: JSON.stringify({ email: taken.user.email })
+  });
+  const duplicate = await json(duplicateCodeResponse);
+  assert.equal(duplicateCodeResponse.status, 409);
+  assert.equal(duplicate.code, 'EMAIL_IN_USE');
+
+  const codeResponse = await request('/user/email/code', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${login.token}` },
+    body: JSON.stringify({ email: nextEmail })
+  });
+  const code = await json(codeResponse);
+  assert.equal(codeResponse.status, 200);
+  assert.match(code.devCode, /^\d{6}$/);
+
+  const wrongCodeResponse = await request('/user/email', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${login.token}` },
+    body: JSON.stringify({ password, email: nextEmail, code: '000000' })
+  });
+  const wrongCode = await json(wrongCodeResponse);
+  assert.equal(wrongCodeResponse.status, 400);
+  assert.equal(wrongCode.code, 'EMAIL_CODE_INVALID');
+
+  const bindResponse = await request('/user/email', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${login.token}` },
+    body: JSON.stringify({ password, email: nextEmail, code: code.devCode })
+  });
+  const bind = await json(bindResponse);
+  assert.equal(bindResponse.status, 200);
+  assert.match(bind.email, /\*/);
+
+  await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), username: null, email: null } });
+  await prisma.user.update({ where: { id: taken.user.id }, data: { deletedAt: new Date(), username: null, email: null } });
+});
+
+test('session list marks the current device', async () => {
+  const { user, username, password } = await createAuthUser('sessions');
+  const login = await loginAs(username, password);
+
+  const response = await request('/auth/sessions', {
+    headers: { Authorization: `Bearer ${login.token}` }
+  });
+  const body = await json(response);
+  assert.equal(response.status, 200);
+  assert.ok(body.sessions.some((session) => session.isCurrent));
+
+  await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), username: null } });
 });
 
 test('checkins support pagination and soft delete', async () => {

@@ -206,27 +206,27 @@ function settingsGroupsForRender() {
   const s = currentSettings || {};
   return [
     {
-      title: '账号与隐私',
+      title: '账号安全',
       items: [
-        { key: 'profile', name: '账号资料', icon: 'user-cog', hint: '昵称、头像、签名', action: 'profile' },
+        { key: 'profile', name: '账号资料', icon: 'user-cog', hint: '头像、昵称、签名与绑定信息', action: 'profile' },
+        { key: 'password', name: '修改密码', icon: 'lock-keyhole', hint: '验证身份后更新登录密码', action: 'password' },
+        { key: 'phone', name: '换绑手机号', icon: 'smartphone', hint: currentUser?.phone || '绑定新的安全手机号', action: 'phone' },
+        { key: 'email', name: '换绑邮箱', icon: 'mail', hint: currentUser?.email || '绑定新的安全邮箱', action: 'email' },
+        { key: 'devices', name: '登录设备管理', icon: 'monitor-smartphone', hint: `${currentSessions?.length || 0} 台活跃设备`, action: 'devices' }
+      ]
+    },
+    {
+      title: '偏好设置',
+      items: [
         { key: 'privacy', name: '隐私设置', icon: 'shield-check', hint: `足迹：${settingLabels.privacyVisibility[s.privacyVisibility] || '仅自己可见'}`, action: 'privacy' },
-        { key: 'security', name: '登录与安全', icon: 'lock-keyhole', hint: '密码、登录状态、退出登录', action: 'security' }
+        { key: 'theme', name: '主题设置', icon: 'palette', hint: settingLabels.mapTheme[s.mapTheme] || '赛博深邃', action: 'theme' },
+        { key: 'language', name: '语言', icon: 'languages', hint: s.language === 'en-US' ? 'English' : '简体中文', action: 'language' }
       ]
     },
     {
-      title: '显示与偏好',
+      title: '其他',
       items: [
-        { key: 'mapTheme', name: '地图主题', icon: 'map', hint: settingLabels.mapTheme[s.mapTheme] || '赛博深邃', action: 'mapTheme' },
-        { key: 'glowColor', name: '点亮颜色', icon: 'sparkles', hint: settingLabels.glowColor[s.glowColor] || '极光青', action: 'glowColor' },
-        { key: 'photoViewMode', name: '照片显示模式', icon: 'images', hint: settingLabels.photoViewMode[s.photoViewMode] || '时间线', action: 'photoViewMode' },
-        { key: 'notifications', name: '通知偏好', icon: 'bell', hint: s.notificationEnabled ? '通知已开启' : '通知已关闭', action: 'notifications' }
-      ]
-    },
-    {
-      title: '数据与安全',
-      items: [
-        { key: 'storage', name: '照片存储', icon: 'hard-drive', hint: '查看照片和缓存占用', action: 'storage' },
-        { key: 'export', name: '导出我的数据', icon: 'database', hint: '下载个人数据 JSON', action: 'export' },
+        { key: 'cache', name: '清除缓存', icon: 'trash-2', hint: '清理本地缓存状态', action: 'cache' },
         { key: 'logout', name: '退出登录', icon: 'log-out', hint: '结束当前会话', action: 'logout', tone: 'danger' }
       ]
     }
@@ -338,22 +338,15 @@ function renderLoggedInMePage() {
           </div>
         </div>
       `).join('')}
-      <div class="rounded-3xl border border-rose-400/20 bg-rose-500/10 p-3 backdrop-blur-md">
-        <button class="delete-account-entry flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left text-rose-100 transition-all duration-300 ease-out hover:bg-rose-500/10">
-          <span class="flex items-center gap-3"><span class="grid h-10 w-10 place-items-center rounded-2xl bg-rose-500/10 text-rose-300"><i data-lucide="trash-2" class="h-5 w-5"></i></span><span><span class="block text-sm font-medium">注销账号</span><span class="mt-0.5 block text-xs text-rose-200/70">删除账号、打卡和照片记录</span></span></span>
-          <i data-lucide="chevron-right" class="h-4 w-4 text-rose-300"></i>
-        </button>
-      </div>
     </section>
   `;
-  root.querySelector('.me-edit-profile').addEventListener('click', openEditProfileDrawer);
+  root.querySelector('.me-edit-profile').addEventListener('click', () => handleMeAction('profile'));
   root.querySelectorAll('.me-stat').forEach((button) => {
     button.addEventListener('click', () => openPrototypeDrawer(button.dataset.title, `当前指标：${button.dataset.desc}`, button.dataset.icon));
   });
   root.querySelectorAll('.setting-entry').forEach((button) => {
     button.addEventListener('click', () => handleMeAction(button.dataset.action));
   });
-  root.querySelector('.delete-account-entry').addEventListener('click', () => handleMeAction('deleteAccount'));
   createIcons();
 }
 
@@ -613,40 +606,6 @@ function openChoiceSettingDrawer(key, title, options, label = title) {
   });
 }
 
-function openNotificationSettingsDrawer() {
-  const s = currentSettings || {};
-  openDrawer(`
-    <form id="notification-form">
-      <div class="flex items-start justify-between gap-4">
-        <div><p class="text-sm text-[#06B6D4]">Notifications</p><h2 class="mt-1 text-2xl font-semibold text-[#F9FAFB]">通知偏好</h2></div>
-        <button type="button" class="drawer-close rounded-full border border-[#1F2937] bg-[#030712]/70 p-2 text-[#9CA3AF]"><i data-lucide="x" class="h-5 w-5"></i></button>
-      </div>
-      <div class="mt-5 space-y-2">
-        ${[
-          ['notificationEnabled', '总通知'],
-          ['checkinReminder', '打卡提醒'],
-          ['yearlyReport', '年度报告']
-        ].map(([key, label]) => `
-          <label class="flex items-center justify-between rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB]">
-            <span>${label}</span><input type="checkbox" name="${key}" ${s[key] ? 'checked' : ''}>
-          </label>
-        `).join('')}
-      </div>
-      <button class="mt-5 w-full rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-4 font-semibold text-[#030712]" type="submit">保存通知设置</button>
-    </form>
-  `);
-  document.getElementById('notification-form').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const form = event.target;
-    await saveSettings({
-      notificationEnabled: form.notificationEnabled.checked,
-      checkinReminder: form.checkinReminder.checked,
-      yearlyReport: form.yearlyReport.checked
-    });
-    closeDrawer();
-  });
-}
-
 function openSecurityDrawer() {
   const sessions = currentSessions || [];
   openDrawer(`
@@ -714,80 +673,23 @@ function openSecurityDrawer() {
   });
 }
 
-async function openStorageDrawer() {
-  const storage = await apiRequest('/user/storage');
-  openDrawer(`
-    <div class="flex items-start justify-between gap-4">
-      <div><p class="text-sm text-[#06B6D4]">Storage</p><h2 class="mt-1 text-2xl font-semibold text-[#F9FAFB]">照片存储</h2></div>
-      <button class="drawer-close rounded-full border border-[#1F2937] bg-[#030712]/70 p-2 text-[#9CA3AF]"><i data-lucide="x" class="h-5 w-5"></i></button>
-    </div>
-    <div class="mt-5 grid grid-cols-2 gap-3">
-      <div class="rounded-2xl border border-cyan-300/10 bg-[#030712]/70 p-4"><p class="text-2xl font-semibold text-[#F9FAFB]">${storage.photoCount}</p><p class="mt-1 text-xs text-[#9CA3AF]">照片数量</p></div>
-      <div class="rounded-2xl border border-cyan-300/10 bg-[#030712]/70 p-4"><p class="text-2xl font-semibold text-[#F9FAFB]">${storage.checkinCount}</p><p class="mt-1 text-xs text-[#9CA3AF]">打卡数量</p></div>
-      <div class="rounded-2xl border border-cyan-300/10 bg-[#030712]/70 p-4"><p class="text-2xl font-semibold text-[#06B6D4]">${storage.estimatedStorage}</p><p class="mt-1 text-xs text-[#9CA3AF]">估算空间</p></div>
-      <div class="rounded-2xl border border-cyan-300/10 bg-[#030712]/70 p-4"><p class="text-2xl font-semibold text-[#F9FAFB]">${storage.uploadFolderSize}</p><p class="mt-1 text-xs text-[#9CA3AF]">上传目录字节</p></div>
-    </div>
-    <button class="clear-cache mt-5 w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-5 py-4 font-semibold text-[#FACC15]">清除本地缓存</button>
-  `);
-  document.querySelector('.clear-cache').addEventListener('click', async () => {
-    await apiRequest('/user/cache', { method: 'DELETE', body: JSON.stringify({}) });
-    showToast('本地缓存已清理', 'success');
-    closeDrawer();
-  });
-}
-
-async function exportMyData() {
-  const data = await apiRequest('/user/export', { method: 'POST', body: JSON.stringify({}) });
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'travel-glow-export.json';
-  link.click();
-  URL.revokeObjectURL(url);
-  showToast('数据导出已开始下载', 'success');
-}
-
-function openDeleteAccountDrawer() {
-  openDrawer(`
-    <form id="delete-account-form">
-      <div class="flex items-start justify-between gap-4">
-        <div><p class="text-sm text-rose-300">Danger Zone</p><h2 class="mt-1 text-2xl font-semibold text-[#F9FAFB]">注销账号</h2><p class="mt-2 text-sm text-rose-200/80">此操作会删除你的账号、打卡、照片和设置。</p></div>
-        <button type="button" class="drawer-close rounded-full border border-[#1F2937] bg-[#030712]/70 p-2 text-[#9CA3AF]"><i data-lucide="x" class="h-5 w-5"></i></button>
-      </div>
-      <div class="mt-5 space-y-3">
-        <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">密码</span><input name="password" type="password" required class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB]"></label>
-        <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">输入 DELETE 确认</span><input name="confirmText" required class="w-full rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-rose-100"></label>
-      </div>
-      <button class="mt-5 w-full rounded-2xl bg-rose-500 px-5 py-4 font-semibold text-white" type="submit">确认注销账号</button>
-    </form>
-  `);
-  document.getElementById('delete-account-form').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    await apiRequest('/user/account', { method: 'DELETE', body: JSON.stringify(Object.fromEntries(new FormData(event.target).entries())) });
-    clearToken();
-    currentUser = null;
-    currentSettings = null;
-    currentSessions = [];
-    closeDrawer();
-    renderMePage();
-    showToast('账号已注销', 'success');
-  });
-}
-
 function handleMeAction(action) {
+  if (window.AccountSecurity?.open) {
+    window.AccountSecurity.open(action);
+    return;
+  }
   switch (action) {
     case 'profile': openEditProfileDrawer(); break;
     case 'privacy': openPrivacySettingsDrawer(); break;
+    case 'password':
+    case 'phone':
+    case 'email':
+    case 'devices':
+    case 'theme':
+    case 'language':
+    case 'cache':
     case 'security': openSecurityDrawer(); break;
-    case 'mapTheme': openChoiceSettingDrawer('mapTheme', '地图主题', [['cyber', '赛博深邃'], ['aurora', '极光微芒'], ['classic', '经典暗色']]); break;
-    case 'glowColor': openChoiceSettingDrawer('glowColor', '点亮颜色', [['cyan', '极光青'], ['emerald', '翡翠绿'], ['amber', '星芒金'], ['violet', '星云紫']]); break;
-    case 'photoViewMode': openChoiceSettingDrawer('photoViewMode', '照片显示模式', [['timeline', '时间线'], ['grid', '网格'], ['compact', '紧凑']]); break;
-    case 'notifications': openNotificationSettingsDrawer(); break;
-    case 'storage': openStorageDrawer(); break;
-    case 'export': exportMyData(); break;
     case 'logout': logout(); break;
-    case 'deleteAccount': openDeleteAccountDrawer(); break;
   }
 }
 
@@ -801,6 +703,25 @@ async function loadAuthenticatedApp() {
   await loadAuthMe();
   await refreshAll();
 }
+
+window.TravelGlowAccount = {
+  getUser: () => currentUser,
+  setUser: (user) => { currentUser = user; },
+  getSettings: () => currentSettings,
+  getSessions: () => currentSessions,
+  apiRequest,
+  loadAuthMe,
+  refreshAll,
+  renderMePage,
+  saveSettings,
+  logout,
+  openLoginDrawer,
+  clearToken,
+  showToast,
+  escapeHtml,
+  confirmAction,
+  createIcons: () => createIcons()
+};
 
 async function initPersonalCenter() {
   setTab('home');

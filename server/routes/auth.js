@@ -88,8 +88,20 @@ function assertStrongPassword(password) {
   }
 }
 
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, keyPrefix: 'auth' });
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60, keyPrefix: 'auth' });
 const smsLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, keyPrefix: 'sms' });
+
+function formatSession(session, currentSessionId) {
+  return {
+    id: session.id,
+    deviceName: session.deviceName,
+    ipAddress: session.ipAddress,
+    userAgent: session.userAgent,
+    lastActiveAt: session.lastActiveAt,
+    createdAt: session.createdAt,
+    isCurrent: session.id === currentSessionId
+  };
+}
 
 router.post('/sms/send', smsLimiter, validate(sendSmsSchema), async (req, res, next) => {
   try {
@@ -202,7 +214,19 @@ router.get('/me', auth, async (req, res, next) => {
       orderBy: { lastActiveAt: 'desc' },
       take: 5
     });
-    res.json({ user: publicUser(req.user), settings, sessions });
+    res.json({ user: publicUser(req.user), settings, sessions: sessions.map((session) => formatSession(session, req.session.id)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/sessions', auth, async (req, res, next) => {
+  try {
+    const sessions = await prisma.loginSession.findMany({
+      where: { userId: req.user.id, revokedAt: null },
+      orderBy: { lastActiveAt: 'desc' }
+    });
+    res.json({ sessions: sessions.map((session) => formatSession(session, req.session.id)) });
   } catch (error) {
     next(error);
   }

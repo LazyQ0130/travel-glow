@@ -620,20 +620,7 @@
         items: [
           { name: '账号资料', icon: 'user-cog', hint: '昵称、头像、签名', tone: 'cyan' },
           { name: '隐私设置', icon: 'shield-check', hint: '照片与足迹可见范围', tone: 'cyan' },
-          { name: '登录与安全', icon: 'lock-keyhole', hint: '邮箱、密码、设备管理', tone: 'cyan' }
-        ]
-      },
-      {
-        title: '数据与偏好',
-        items: [
-          { name: '地区数据版本', icon: 'database', hint: 'v0.1 Demo 数据', tone: 'cyan' },
-          { name: '照片存储', icon: 'hard-drive', hint: '本地原型，后续接对象存储', tone: 'cyan' },
-          { name: '通知偏好', icon: 'bell', hint: '打卡提醒与旅行回顾', tone: 'cyan' }
-        ]
-      },
-      {
-        title: '会话',
-        items: [
+          { name: '登录与安全', icon: 'lock-keyhole', hint: '邮箱、密码、设备管理', tone: 'cyan' },
           { name: '退出登录', icon: 'log-out', hint: '结束当前账号会话', tone: 'danger' }
         ]
       }
@@ -2225,6 +2212,7 @@
 
     // 旧的自动 Demo 登录启动逻辑已由 me-app.js 接管。
   </script>
+  <script src="/account-security.js"></script>
   <script src="/me-app.js"></script>
 </body>
 </html>
