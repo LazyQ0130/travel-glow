@@ -3,9 +3,13 @@ const path = require('path');
 const multer = require('multer');
 
 const uploadDir = path.resolve(__dirname, 'uploads');
+const avatarDir = path.resolve(uploadDir, 'avatars');
 
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: false });
+}
+if (!fs.existsSync(avatarDir)) {
+  fs.mkdirSync(avatarDir, { recursive: false });
 }
 
 const storage = multer.diskStorage({
@@ -36,6 +40,25 @@ const uploadPhotos = upload.fields([
   { name: 'photos[]', maxCount: 9 }
 ]);
 
+const avatarStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, avatarDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
+  }
+});
+
+const uploadAvatar = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype || !file.mimetype.startsWith('image/')) {
+      return cb(new Error('只能上传图片文件'));
+    }
+    cb(null, true);
+  }
+});
+
 function uploadedPhotos(req) {
   if (Array.isArray(req.files)) return req.files;
   return [
@@ -46,8 +69,8 @@ function uploadedPhotos(req) {
 
 function localUploadPath(imageUrl) {
   if (!imageUrl || !imageUrl.startsWith('/uploads/')) return null;
-  const filename = path.basename(imageUrl);
-  const resolved = path.resolve(uploadDir, filename);
+  const relativePath = imageUrl.replace('/uploads/', '').split('/').map((part) => path.basename(part));
+  const resolved = path.resolve(uploadDir, ...relativePath);
   if (!resolved.startsWith(`${uploadDir}${path.sep}`)) return null;
   return resolved;
 }
@@ -64,4 +87,4 @@ async function deleteLocalUpload(imageUrl) {
   }
 }
 
-module.exports = { upload, uploadPhotos, uploadedPhotos, uploadDir, deleteLocalUpload };
+module.exports = { upload, uploadPhotos, uploadedPhotos, uploadAvatar, uploadDir, avatarDir, deleteLocalUpload };

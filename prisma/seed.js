@@ -3,6 +3,7 @@ const prisma = require('../server/db');
 const seedData = require('../data/seed-data');
 
 const DEFAULT_EMAIL = '321167759@qq.com';
+const DEMO_EMAIL = 'demo@travelglow.local';
 const DEFAULT_PASSWORD = '123456';
 const DEFAULT_NOTE = '来自前端原型的初始打卡记录';
 
@@ -35,24 +36,70 @@ async function createPhotos(userId, checkinId, count) {
   }
 }
 
-async function main() {
-  await prisma.photo.deleteMany();
-  await prisma.checkin.deleteMany();
-  await prisma.region.deleteMany();
-  await prisma.user.deleteMany();
-
-  const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
-  const user = await prisma.user.create({
+async function createSeedUser({ username, nickname, email, phone, passwordHash }) {
+  return prisma.user.create({
     data: {
-      nickname: 'QYF',
-      email: DEFAULT_EMAIL,
+      username,
+      nickname,
+      email,
+      phone,
+      emailVerifiedAt: email ? new Date() : null,
+      phoneVerifiedAt: phone ? new Date() : null,
       passwordHash,
       bio: seedData.userProfile.bio,
       avatar: seedData.userProfile.avatar,
       level: seedData.userProfile.level,
-      exp: seedData.userProfile.exp
+      exp: seedData.userProfile.exp,
+      settings: { create: {} }
     }
   });
+}
+
+async function createInitialCheckinsForUser(user) {
+  for (const province of seedData.chinaRegions.filter((item) => item.checked)) {
+    const counts = distributeCount(province.photoCount || 0, province.cities.length);
+    for (const [index, cityName] of province.cities.entries()) {
+      const checkin = await prisma.checkin.create({
+        data: {
+          userId: user.id,
+          regionId: cityId(province.id, cityName),
+          checkinDate: new Date('2026-05-16T00:00:00.000Z'),
+          title: `${cityName}打卡`,
+          note: DEFAULT_NOTE
+        }
+      });
+      await createPhotos(user.id, checkin.id, counts[index] || 0);
+    }
+  }
+
+  for (const group of seedData.worldRegions) {
+    for (const country of group.countries.filter((item) => item.checked)) {
+      const checkin = await prisma.checkin.create({
+        data: {
+          userId: user.id,
+          regionId: country.id,
+          checkinDate: new Date(`${country.date || '2025-01-01'}T00:00:00.000Z`),
+          title: `${country.name}打卡`,
+          note: DEFAULT_NOTE
+        }
+      });
+      await createPhotos(user.id, checkin.id, country.photoCount || 0);
+    }
+  }
+}
+
+async function main() {
+  await prisma.photo.deleteMany();
+  await prisma.checkin.deleteMany();
+  await prisma.verificationCode.deleteMany();
+  await prisma.loginSession.deleteMany();
+  await prisma.userSettings.deleteMany();
+  await prisma.region.deleteMany();
+  await prisma.user.deleteMany();
+
+  const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+  const defaultUser = await createSeedUser({ username: 'qyf', nickname: 'QYF', email: DEFAULT_EMAIL, phone: '13900000000', passwordHash });
+  const demoUser = await createSeedUser({ username: 'demo', nickname: 'Demo 旅光用户', email: DEMO_EMAIL, phone: '13800000000', passwordHash });
 
   for (const [index, region] of seedData.chinaRegions.entries()) {
     await prisma.region.create({
@@ -110,36 +157,8 @@ async function main() {
     }
   }
 
-  for (const province of seedData.chinaRegions.filter((item) => item.checked)) {
-    const counts = distributeCount(province.photoCount || 0, province.cities.length);
-    for (const [index, cityName] of province.cities.entries()) {
-      const checkin = await prisma.checkin.create({
-        data: {
-          userId: user.id,
-          regionId: cityId(province.id, cityName),
-          checkinDate: new Date('2026-05-16T00:00:00.000Z'),
-          title: `${cityName}打卡`,
-          note: DEFAULT_NOTE
-        }
-      });
-      await createPhotos(user.id, checkin.id, counts[index] || 0);
-    }
-  }
-
-  for (const group of seedData.worldRegions) {
-    for (const country of group.countries.filter((item) => item.checked)) {
-      const checkin = await prisma.checkin.create({
-        data: {
-          userId: user.id,
-          regionId: country.id,
-          checkinDate: new Date(`${country.date || '2025-01-01'}T00:00:00.000Z`),
-          title: `${country.name}打卡`,
-          note: DEFAULT_NOTE
-        }
-      });
-      await createPhotos(user.id, checkin.id, country.photoCount || 0);
-    }
-  }
+  await createInitialCheckinsForUser(defaultUser);
+  await createInitialCheckinsForUser(demoUser);
 }
 
 main()

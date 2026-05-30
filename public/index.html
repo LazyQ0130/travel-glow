@@ -2051,7 +2051,7 @@
       `);
       document.querySelector('.edit-checkin')?.addEventListener('click', () => openEditCheckinDrawer(checkin.id));
       document.querySelector('.delete-photo')?.addEventListener('click', async () => {
-        if (!confirm('确定删除这张照片吗？')) return;
+        if (!(await confirmAction('确定删除这张照片吗？', { title: '删除照片', danger: true }))) return;
         await apiFetch(`/photos/${photo.id}`, { method: 'DELETE' });
         await refreshAll();
         closeDrawer();
@@ -2096,7 +2096,7 @@
         closeDrawer();
       });
       form.querySelector('.delete-checkin').addEventListener('click', async () => {
-        if (!confirm('确定删除这条打卡和关联照片吗？')) return;
+        if (!(await confirmAction('确定删除这条打卡和关联照片吗？', { title: '删除打卡', danger: true }))) return;
         await apiFetch(`/checkins/${checkin.id}`, { method: 'DELETE' });
         await refreshAll();
         closeDrawer();
@@ -2223,11 +2223,8 @@
       document.getElementById('fab').addEventListener('click', openAddDrawer);
     }
 
-    initApp().catch((error) => {
-      console.error(error);
-      openPrototypeDrawer('加载失败', error.message || '请确认后端服务和数据库已启动。', 'database');
-      createIcons();
-    });
+    // 旧的自动 Demo 登录启动逻辑已由 me-app.js 接管。
   </script>
+  <script src="/me-app.js"></script>
 </body>
 </html>

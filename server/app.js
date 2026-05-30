@@ -22,6 +22,15 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(uploadDir));
 app.use(express.static(path.resolve(__dirname, '..', 'public')));
 
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    name: 'travel-glow',
+    version: '1.0.0',
+    time: new Date().toISOString()
+  });
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/regions', regionRoutes);
@@ -37,14 +46,24 @@ app.get('*', (req, res) => {
 app.use((error, req, res, next) => {
   console.error(error);
   if (error.message === '只能上传图片文件') {
-    return res.status(400).json({ message: error.message });
+    return res.status(400).json({ message: error.message, code: 'INVALID_UPLOAD_TYPE' });
   }
   if (error.code === 'LIMIT_FILE_SIZE') {
-    return res.status(400).json({ message: '单张图片不能超过 10MB' });
+    return res.status(400).json({ message: '单张图片不能超过 10MB', code: 'UPLOAD_TOO_LARGE' });
   }
-  res.status(500).json({ message: '服务器错误', detail: error.message });
+  if (error.statusCode) {
+    return res.status(error.statusCode).json({ message: error.message, code: error.code || 'REQUEST_ERROR' });
+  }
+  if (error.code === 'P2002') {
+    return res.status(409).json({ message: '账号名、邮箱或手机号已被使用', code: 'UNIQUE_CONSTRAINT' });
+  }
+  res.status(500).json({ message: '服务器错误', code: 'INTERNAL_ERROR', details: error.message });
 });
 
-app.listen(port, () => {
-  console.log(`Travel Glow running at http://localhost:${port}`);
-});
+if (require.main === module) {
+  app.listen(port, () => {
+    console.log(`Travel Glow running at http://localhost:${port}`);
+  });
+}
+
+module.exports = app;
