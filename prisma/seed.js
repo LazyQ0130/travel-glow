@@ -3,7 +3,6 @@ const prisma = require('../server/db');
 const seedData = require('../data/seed-data');
 
 const DEFAULT_EMAIL = '321167759@qq.com';
-const DEMO_EMAIL = 'demo@travelglow.local';
 const DEFAULT_PASSWORD = '123456';
 const DEFAULT_NOTE = '来自前端原型的初始打卡记录';
 
@@ -97,7 +96,6 @@ async function main() {
 
   const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
   const defaultUser = await createSeedUser({ username: 'qyf', nickname: 'QYF', email: DEFAULT_EMAIL, passwordHash });
-  const demoUser = await createSeedUser({ username: 'demo', nickname: 'Demo 旅光用户', email: DEMO_EMAIL, passwordHash });
 
   for (const [index, region] of seedData.chinaRegions.entries()) {
     await prisma.region.create({
@@ -156,7 +154,6 @@ async function main() {
   }
 
   await createInitialCheckinsForUser(defaultUser);
-  await createInitialCheckinsForUser(demoUser);
 }
 
 main()

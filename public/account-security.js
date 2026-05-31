@@ -401,9 +401,9 @@ const AccountSecurity = (() => {
         }
         sendButton.disabled = true;
         sendButton.textContent = '\u53d1\u9001\u4e2d...';
-        const result = await app().apiRequest(copy.sendPath, { method: 'POST', body: JSON.stringify({ email: value }) });
+        await app().apiRequest(copy.sendPath, { method: 'POST', body: JSON.stringify({ email: value }) });
         sendButton.disabled = true;
-        sendButton.textContent = result.devCode ? `验证码 ${result.devCode}` : '已发送';
+        sendButton.textContent = '已发送';
         startButtonCooldown(sendButton, originalText, 60);
       } catch (error) {
         const retryAfter = Number(error.retryAfterSeconds || error.details?.retryAfterSeconds || 0);

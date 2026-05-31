@@ -85,7 +85,7 @@ async function createEmailCode({ email, purpose, userId = null, ipAddress = '' }
   return {
     email: normalized,
     expiresIn: CODE_TTL_MINUTES * 60,
-    devCode: config.emailProvider === 'mock' || !config.isProduction ? code : undefined
+    devCode: config.exposeDevEmailCode && !config.isProduction ? code : undefined
   };
 }
 

@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const bcrypt = require('bcryptjs');
 
 process.env.LOG_LEVEL = process.env.LOG_LEVEL || 'silent';
+process.env.EXPOSE_DEV_EMAIL_CODE = 'true';
 
 const app = require('../server/app');
 const prisma = require('../server/db');
@@ -112,7 +113,7 @@ test('registration rejects weak passwords before creating an account', async () 
 test('password login creates a server-validated session and logout revokes it', async () => {
   const loginResponse = await request('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ identifier: 'demo', password: '123456' })
+    body: JSON.stringify({ identifier: 'qyf', password: '123456' })
   });
   const login = await json(loginResponse);
   assert.equal(loginResponse.status, 200);
@@ -123,7 +124,7 @@ test('password login creates a server-validated session and logout revokes it', 
   });
   const me = await json(meResponse);
   assert.equal(meResponse.status, 200);
-  assert.equal(me.user.username, 'demo');
+  assert.equal(me.user.username, 'qyf');
   assert.ok(Array.isArray(me.sessions));
 
   const logoutResponse = await request('/auth/logout', {
@@ -142,7 +143,7 @@ test('password login creates a server-validated session and logout revokes it', 
 test('mock email verification supports email login in development', async () => {
   const codeResponse = await request('/auth/email/send', {
     method: 'POST',
-    body: JSON.stringify({ email: 'demo@travelglow.local', purpose: 'login' })
+    body: JSON.stringify({ email: '321167759@qq.com', purpose: 'login' })
   });
   const codeBody = await json(codeResponse);
   assert.equal(codeResponse.status, 200);
@@ -150,7 +151,7 @@ test('mock email verification supports email login in development', async () => 
 
   const loginResponse = await request('/auth/login/email', {
     method: 'POST',
-    body: JSON.stringify({ email: 'demo@travelglow.local', code: codeBody.devCode })
+    body: JSON.stringify({ email: '321167759@qq.com', code: codeBody.devCode })
   });
   const login = await json(loginResponse);
   assert.equal(loginResponse.status, 200);
@@ -191,7 +192,7 @@ test('password login locks an account after repeated failures', async () => {
 test('settings update persists for the current user', async () => {
   const loginResponse = await request('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ identifier: 'demo', password: '123456' })
+    body: JSON.stringify({ identifier: 'qyf', password: '123456' })
   });
   const login = await json(loginResponse);
 
@@ -379,7 +380,7 @@ test('session list marks the current device', async () => {
 test('checkins support pagination and soft delete', async () => {
   const loginResponse = await request('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ identifier: 'demo', password: '123456' })
+    body: JSON.stringify({ identifier: 'qyf', password: '123456' })
   });
   const login = await json(loginResponse);
   const region = await prisma.region.findFirst({ where: { type: 'city' } });
@@ -421,7 +422,7 @@ test('checkins support pagination and soft delete', async () => {
 test('photo upload rejects files with a mismatched image signature', async () => {
   const loginResponse = await request('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ identifier: 'demo', password: '123456' })
+    body: JSON.stringify({ identifier: 'qyf', password: '123456' })
   });
   const login = await json(loginResponse);
   const region = await prisma.region.findFirst({ where: { type: 'city' } });

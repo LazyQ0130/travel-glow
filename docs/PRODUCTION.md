@@ -23,6 +23,7 @@ SMTP_USER=your-account@example.com
 SMTP_PASSWORD=your-smtp-password-or-app-password
 SMTP_FROM=your-account@example.com
 SMTP_TIMEOUT_MS=10000
+EXPOSE_DEV_EMAIL_CODE=false
 
 LOG_LEVEL=info
 RUN_MIGRATIONS_ON_START=true
@@ -32,8 +33,10 @@ RUN_MIGRATIONS_ON_START=true
 
 Travel Glow supports two email verification providers:
 
-- `EMAIL_PROVIDER=mock`: development mode. The API response includes `devCode`.
+- `EMAIL_PROVIDER=mock`: local development mode only. It does not send real email.
 - `EMAIL_PROVIDER=smtp`: production mode. A plain-text verification email is sent through SMTP.
+
+`devCode` is only returned when `EXPOSE_DEV_EMAIL_CODE=true` and `NODE_ENV` is not `production`. Keep it disabled for real users.
 
 SMTP notes:
 

@@ -1,5 +1,4 @@
 // 个人中心增强层：只接管登录状态、我的页设置和账号相关功能。
-const DEMO_LOGIN = { identifier: 'demo', password: '123456' };
 const AUTH_TOKEN_KEY = 'travel_glow_token';
 const LEGACY_TOKEN_KEY = 'travel-glow-token';
 
@@ -114,9 +113,10 @@ async function apiRequest(path, options = {}) {
     currentUser = null;
     currentSettings = null;
     currentSessions = [];
-    renderMePage();
+    renderLoginRequiredApp();
+    setTab('me');
     showToast(data.message || '登录状态已失效，请重新登录', 'warning');
-    if (document.getElementById('page-me')?.classList.contains('active')) openLoginDrawer();
+    openLoginDrawer();
     throw new Error(data.message || '请重新登录');
   }
   if (!response.ok) {
@@ -242,17 +242,15 @@ function renderLoggedOutMePage() {
         <p class="text-sm text-[#06B6D4]">Travel Glow Account</p>
         <h1 class="mt-2 text-3xl font-semibold text-[#F9FAFB]">旅光账号</h1>
         <p class="mt-2 text-sm leading-6 text-[#9CA3AF]">登录后同步你的足迹、照片和设置，刷新页面后仍然保留。</p>
-        <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <button class="login-entry rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-4 py-3 font-semibold text-[#030712]">登录</button>
           <button class="register-entry rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-[#06B6D4]">注册</button>
-          <button class="demo-entry rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB]">Demo 登录</button>
         </div>
       </div>
     </section>
   `;
   root.querySelector('.login-entry').addEventListener('click', openLoginDrawer);
   root.querySelector('.register-entry').addEventListener('click', openRegisterDrawer);
-  root.querySelector('.demo-entry').addEventListener('click', loginDemoAccount);
 }
 
 function renderLoggedInMePage() {
@@ -354,6 +352,43 @@ renderMePage = function renderMePageByAuth() {
   return renderLoggedInMePage();
 };
 
+function renderLoginRequiredPage(pageId, title, description, icon = 'lock-keyhole') {
+  const page = document.getElementById(pageId);
+  if (!page) return;
+  page.innerHTML = `
+    <section class="flex min-h-[70vh] items-center justify-center">
+      <div class="w-full max-w-xl rounded-3xl border border-cyan-300/10 bg-[#111827]/70 p-6 text-center shadow-[0_0_42px_rgba(6,182,212,.12)] backdrop-blur-md">
+        <div class="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-cyan-300/20 bg-cyan-400/10 text-[#06B6D4]">
+          <i data-lucide="${icon}" class="h-7 w-7"></i>
+        </div>
+        <p class="mt-5 text-sm text-[#06B6D4]">Travel Glow Account</p>
+        <h1 class="mt-2 text-2xl font-semibold text-[#F9FAFB]">${escapeHtml(title)}</h1>
+        <p class="mt-3 text-sm leading-6 text-[#9CA3AF]">${escapeHtml(description)}</p>
+        <div class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button class="login-required-login rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-4 font-semibold text-[#030712]" type="button">登录</button>
+          <button class="login-required-register rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-5 py-4 font-semibold text-[#06B6D4]" type="button">注册</button>
+        </div>
+      </div>
+    </section>
+  `;
+  page.querySelector('.login-required-login')?.addEventListener('click', openLoginDrawer);
+  page.querySelector('.login-required-register')?.addEventListener('click', openRegisterDrawer);
+}
+
+function renderLoginRequiredApp() {
+  appStats = null;
+  appPhotos = [];
+  appCheckins = [];
+  appChinaLit = { litProvinceIds: [], litCityIds: [] };
+  appWorldLit = { litCountryIds: [], litSpecialRegionIds: [] };
+  renderLoginRequiredPage('page-home', '请先登录', '登录后才能查看你的旅行足迹、地图进度和最近照片。', 'shield');
+  renderLoginRequiredPage('page-china', '请先登录中国足迹', '中国地图和省市打卡数据只展示当前登录用户的记录。', 'map');
+  renderLoginRequiredPage('page-world', '请先登录世界足迹', '世界地图和国家打卡数据只展示当前登录用户的记录。', 'globe-2');
+  renderLoginRequiredPage('page-album', '请先登录旅行相册', '相册会按省份、城市、国家整理当前用户上传的照片。', 'images');
+  renderMePage();
+  createIcons();
+}
+
 async function submitAuth(path, body) {
   const result = await apiRequest(path, { method: 'POST', body: JSON.stringify(body) });
   saveToken(result.token);
@@ -394,10 +429,10 @@ async function sendEmailCode(email, purpose, targetButton) {
       body: JSON.stringify({ email, purpose })
     });
     if (targetButton) {
-      targetButton.textContent = result.devCode ? `\u9a8c\u8bc1\u7801 ${result.devCode}` : '\u5df2\u53d1\u9001';
+      targetButton.textContent = '\u5df2\u53d1\u9001';
       startButtonCooldown(targetButton, originalText, 60);
     }
-    showToast(result.devCode ? `\u5f00\u53d1\u9a8c\u8bc1\u7801: ${result.devCode}` : '\u9a8c\u8bc1\u7801\u5df2\u53d1\u9001', 'success');
+    showToast('\u9a8c\u8bc1\u7801\u5df2\u53d1\u9001\uff0c\u8bf7\u67e5\u6536\u90ae\u7bb1', 'success');
     return result;
   } catch (error) {
     if (targetButton) {
@@ -438,9 +473,8 @@ function openLoginDrawer() {
         </div>
       </div>
       <button class="mt-5 w-full rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-4 font-semibold text-[#030712]" type="submit">登录</button>
-      <div class="mt-3 grid grid-cols-2 gap-3">
-        <button type="button" class="open-register rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-sm text-[#06B6D4]">注册账号</button>
-        <button type="button" class="demo-login rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-sm text-[#F9FAFB]">使用 Demo 账号</button>
+      <div class="mt-3">
+        <button type="button" class="open-register w-full rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-sm text-[#06B6D4]">注册账号</button>
       </div>
     </form>
   `);
@@ -471,7 +505,6 @@ function openLoginDrawer() {
     await submitAuth('/auth/login', { identifier: form.identifier.value.trim(), password: form.password.value });
   });
   form.querySelector('.open-register').addEventListener('click', openRegisterDrawer);
-  form.querySelector('.demo-login').addEventListener('click', loginDemoAccount);
 }
 
 function openRegisterDrawer() {
@@ -508,10 +541,6 @@ function openRegisterDrawer() {
     await submitAuth('/auth/register', body);
   });
   form.querySelector('.back-login').addEventListener('click', openLoginDrawer);
-}
-
-async function loginDemoAccount() {
-  await submitAuth('/auth/login', DEMO_LOGIN);
 }
 
 async function logout() {
@@ -710,6 +739,16 @@ openAddDrawer = function guardedAddDrawer() {
   return originalOpenAddDrawer();
 };
 
+const originalSetTab = setTab;
+setTab = function guardedSetTab(tab, options = {}) {
+  if (!currentUser && tab !== 'me') {
+    originalSetTab('me', options);
+    openLoginDrawer();
+    return;
+  }
+  originalSetTab(tab, options);
+};
+
 async function loadAuthenticatedApp() {
   await loadAuthMe();
   await refreshAll();
@@ -735,7 +774,6 @@ window.TravelGlowAccount = {
 };
 
 async function initPersonalCenter() {
-  setTab('home');
   createIcons();
   if (authToken) {
     try {
@@ -747,11 +785,11 @@ async function initPersonalCenter() {
     }
   }
   if (!currentUser) {
-    validateMockData();
-    renderDerivedStats();
-    renderChinaMap();
-    renderWorldMap();
-    renderMePage();
+    renderLoginRequiredApp();
+    setTab('me');
+    openLoginDrawer();
+  } else {
+    setTab(currentSettings?.defaultHomeTab || 'home');
   }
   if (!searchBound) {
     bindSearchControls();

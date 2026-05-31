@@ -30,13 +30,15 @@ npm run dev
 http://localhost:3000
 ```
 
-测试账号：
+本地种子账号：
 
 ```text
-username: demo
-email: demo@travelglow.local
+username: qyf
+email: 321167759@qq.com
 password: 123456
 ```
+
+面向他人使用时，不要运行演示种子数据；请让用户通过注册入口创建自己的账号。
 
 ## 环境变量
 
@@ -50,10 +52,18 @@ JWT_EXPIRES_IN="30d"
 PORT=3000
 CORS_ORIGINS="http://localhost:3000"
 LOG_LEVEL="debug"
-EMAIL_PROVIDER="mock"
+EMAIL_PROVIDER="smtp"
+SMTP_HOST="smtp.example.com"
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER="your-smtp-account@example.com"
+SMTP_PASSWORD="your-smtp-password-or-app-password"
+SMTP_FROM="your-smtp-account@example.com"
+EXPOSE_DEV_EMAIL_CODE=false
 ```
 
 生产环境必须提供强随机 `JWT_SECRET`。如果 `NODE_ENV=production` 但仍使用默认弱密钥，服务会拒绝启动。
+邮箱验证码要真实发送到用户邮箱，必须配置可用的 SMTP 服务。仅本地调试时可以把 `EMAIL_PROVIDER` 改为 `mock` 并临时设置 `EXPOSE_DEV_EMAIL_CODE=true`。
 
 ## 常用脚本
 

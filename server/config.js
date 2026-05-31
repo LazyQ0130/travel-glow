@@ -40,6 +40,7 @@ const config = {
   trustProxy: booleanFromEnv('TRUST_PROXY', false),
   logLevel: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
   emailProvider,
+  exposeDevEmailCode: booleanFromEnv('EXPOSE_DEV_EMAIL_CODE', false),
   smtp: {
     host: process.env.SMTP_HOST || '',
     port: numberFromEnv('SMTP_PORT', 587),
