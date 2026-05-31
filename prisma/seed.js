@@ -4,7 +4,7 @@ const seedData = require('../data/seed-data');
 
 const DEFAULT_EMAIL = '321167759@qq.com';
 const DEFAULT_PASSWORD = '123456';
-const DEFAULT_NOTE = '来自前端原型的初始打卡记录';
+const DEFAULT_NOTE = '来自旅行相册的初始打卡记录';
 
 function cityId(provinceId, cityName) {
   return `city:${provinceId}:${cityName}`;

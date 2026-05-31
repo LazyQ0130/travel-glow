@@ -569,7 +569,7 @@
         <div class="grid min-h-28 place-items-center rounded-2xl border border-dashed border-cyan-400/30 bg-cyan-400/5 px-4 py-6 text-center">
           <i data-lucide="image-plus" class="mb-2 h-7 w-7 text-[#06B6D4]"></i>
           <p class="text-sm text-[#F9FAFB]">上传至少 1 张旅行照片</p>
-          <p class="mt-1 text-xs text-[#9CA3AF]">静态 Demo 中仅展示交互样式</p>
+          <p class="mt-1 text-xs text-[#9CA3AF]">请选择照片后保存打卡</p>
         </div>
       </label>
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -767,7 +767,7 @@
               <i data-lucide="${icon}" class="h-5 w-5"></i>
             </div>
             <div>
-              <p class="text-sm text-[#06B6D4]">Prototype Action</p>
+              <p class="text-sm text-[#06B6D4]">Travel Glow</p>
               <h2 class="mt-1 text-2xl font-semibold text-[#F9FAFB]">${title}</h2>
               <p class="mt-2 text-sm leading-6 text-[#9CA3AF]">${description}</p>
             </div>
@@ -777,8 +777,8 @@
           </button>
         </div>
         <div class="mt-5 rounded-2xl border border-cyan-300/10 bg-[#030712]/70 p-4">
-          <p class="text-sm font-semibold text-[#F9FAFB]">当前是前端原型</p>
-          <p class="mt-2 text-sm leading-6 text-[#9CA3AF]">后续可以在这里接入真实接口、账号体系、隐私配置、成就规则或数据分析服务。</p>
+          <p class="text-sm font-semibold text-[#F9FAFB]">功能提示</p>
+          <p class="mt-2 text-sm leading-6 text-[#9CA3AF]">该操作需要登录后使用真实账号数据。</p>
         </div>
       `);
     }
@@ -789,7 +789,7 @@
           <div>
             <p class="text-sm text-[#06B6D4]">Edit Profile</p>
             <h2 class="mt-1 text-2xl font-semibold text-[#F9FAFB]">编辑资料</h2>
-            <p class="mt-2 text-sm text-[#9CA3AF]">当前是前端原型，字段仅作界面展示。</p>
+            <p class="mt-2 text-sm text-[#9CA3AF]">登录后可以修改账号资料。</p>
           </div>
           <button class="drawer-close rounded-full border border-[#1F2937] bg-[#030712]/70 p-2 text-[#9CA3AF] transition-all duration-300 ease-out hover:text-[#F9FAFB]" aria-label="关闭">
             <i data-lucide="x" class="h-5 w-5"></i>
@@ -939,13 +939,13 @@
 
       root.querySelector('.me-edit-profile').addEventListener('click', openEditProfileDrawer);
       root.querySelectorAll('.me-stat').forEach((button) => {
-        button.addEventListener('click', () => openPrototypeDrawer(button.dataset.title, `当前指标：${button.dataset.desc}。这是前端原型数据，后续可接入统计接口。`, button.dataset.icon));
+        button.addEventListener('click', () => openPrototypeDrawer(button.dataset.title, `当前指标：${button.dataset.desc}。`, button.dataset.icon));
       });
       root.querySelectorAll('.setting-entry').forEach((button) => {
         button.addEventListener('click', () => openPrototypeDrawer(`设置 · ${button.dataset.title}`, button.dataset.desc, button.dataset.icon));
       });
       root.querySelectorAll('.me-action').forEach((button) => {
-        button.addEventListener('click', () => openPrototypeDrawer(button.dataset.title, '当前是前端原型，后续可接入真实功能。', button.dataset.icon || 'sparkles'));
+        button.addEventListener('click', () => openPrototypeDrawer(button.dataset.title, '请登录后使用完整功能。', button.dataset.icon || 'sparkles'));
       });
       createIcons();
     }

@@ -752,6 +752,13 @@ setTab = function guardedSetTab(tab, options = {}) {
 async function loadAuthenticatedApp() {
   await loadAuthMe();
   await refreshAll();
+  bindAuthenticatedControls();
+}
+
+function bindAuthenticatedControls() {
+  if (!currentUser || searchBound) return;
+  bindSearchControls();
+  searchBound = true;
 }
 
 window.TravelGlowAccount = {
@@ -791,11 +798,8 @@ async function initPersonalCenter() {
   } else {
     setTab(currentSettings?.defaultHomeTab || 'home');
   }
-  if (!searchBound) {
-    bindSearchControls();
-    searchBound = true;
-  }
-  document.getElementById('fab').addEventListener('click', openAddDrawer);
+  bindAuthenticatedControls();
+  document.getElementById('fab')?.addEventListener('click', openAddDrawer);
 }
 
 initPersonalCenter().catch((error) => {
