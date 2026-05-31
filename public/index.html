@@ -1951,6 +1951,101 @@
       const chinaPhotos = appPhotos.filter((photo) => (photo.region || photo.checkin?.region)?.type === 'city');
       const worldPhotos = appPhotos.filter((photo) => ['country', 'special'].includes((photo.region || photo.checkin?.region)?.type));
 
+      function escapeAlbum(value = '') {
+        return String(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function getPhotoRegion(photo) {
+        return photo.region || photo.checkin?.region || {};
+      }
+
+      function getPhotoParent(photo) {
+        const region = getPhotoRegion(photo);
+        return photo.parentRegion || region.parent || {};
+      }
+
+      function photoTime(photo) {
+        const value = photo.date || photo.checkin?.checkinDate || photo.createdAt;
+        return value ? new Date(value).getTime() || 0 : 0;
+      }
+
+      function sortByLatest(items) {
+        return items.sort((a, b) => {
+          const left = Array.isArray(a.photos) ? photoTime(a.photos[0]) : photoTime(a);
+          const right = Array.isArray(b.photos) ? photoTime(b.photos[0]) : photoTime(b);
+          return right - left;
+        });
+      }
+
+      function buildChinaAlbumGroups(photos) {
+        const provinceMap = new Map();
+        photos.forEach((photo) => {
+          const region = getPhotoRegion(photo);
+          const parent = getPhotoParent(photo);
+          const provinceName = parent.name || '未归属省份';
+          const provinceKey = parent.id || provinceName;
+          if (!provinceMap.has(provinceKey)) {
+            provinceMap.set(provinceKey, {
+              key: provinceKey,
+              name: provinceName,
+              photos: [],
+              cityMap: new Map()
+            });
+          }
+          const province = provinceMap.get(provinceKey);
+          province.photos.push(photo);
+
+          const cityName = region.name || '未命名城市';
+          const cityKey = region.id || cityName;
+          if (!province.cityMap.has(cityKey)) {
+            province.cityMap.set(cityKey, { key: cityKey, name: cityName, photos: [] });
+          }
+          province.cityMap.get(cityKey).photos.push(photo);
+        });
+
+        return Array.from(provinceMap.values()).map((province) => {
+          province.photos = sortByLatest(province.photos);
+          province.cities = sortByLatest(Array.from(province.cityMap.values()).map((city) => ({
+            ...city,
+            photos: sortByLatest(city.photos)
+          })));
+          delete province.cityMap;
+          return province;
+        }).sort((a, b) => photoTime(b.photos[0]) - photoTime(a.photos[0]));
+      }
+
+      function buildWorldAlbumGroups(photos) {
+        const countryMap = new Map();
+        photos.forEach((photo) => {
+          const region = getPhotoRegion(photo);
+          const parent = getPhotoParent(photo);
+          const countryName = region.name || '未命名国家';
+          const countryKey = region.id || countryName;
+          if (!countryMap.has(countryKey)) {
+            countryMap.set(countryKey, {
+              key: countryKey,
+              name: countryName,
+              continent: parent.name || '世界',
+              type: region.type,
+              photos: []
+            });
+          }
+          countryMap.get(countryKey).photos.push(photo);
+        });
+
+        return Array.from(countryMap.values()).map((country) => ({
+          ...country,
+          photos: sortByLatest(country.photos)
+        })).sort((a, b) => photoTime(b.photos[0]) - photoTime(a.photos[0]));
+      }
+
+      const chinaGroups = buildChinaAlbumGroups(chinaPhotos);
+      const worldGroups = buildWorldAlbumGroups(worldPhotos);
+
       function photoGrid(photos, emptyText) {
         if (!photos.length) {
           return `<div class="rounded-3xl border border-[#1F2937] bg-[#111827]/60 p-6 text-center text-sm text-[#9CA3AF]">${emptyText}</div>`;
@@ -1958,14 +2053,98 @@
         return `<div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           ${photos.map((photo, index) => `
             <button class="photo-fallback group relative ${index % 3 === 0 ? 'h-52 sm:h-64' : 'h-44 sm:h-56'} overflow-hidden rounded-2xl text-left transition-all duration-300 ease-out hover:-translate-y-1 hover:scale-[1.01]" data-photo-id="${photo.id}">
-              <img class="h-full w-full object-cover brightness-75 saturate-75 transition-all duration-300 ease-out group-hover:scale-105 group-hover:brightness-100 group-hover:saturate-100" alt="${photoPlace(photo)}" src="${photo.imageUrl}" onerror="this.style.display='none'">
+              <img class="h-full w-full object-cover brightness-75 saturate-75 transition-all duration-300 ease-out group-hover:scale-105 group-hover:brightness-100 group-hover:saturate-100" alt="${escapeAlbum(photoPlace(photo))}" src="${escapeAlbum(photo.imageUrl)}" onerror="this.style.display='none'">
               <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/88 to-transparent p-4">
-                <p class="text-sm font-semibold text-white">${photoPlace(photo)}</p>
+                <p class="text-sm font-semibold text-white">${escapeAlbum(photoPlace(photo))}</p>
                 <p class="text-xs text-[#9CA3AF]">${formatDate(photo.date || photo.checkin?.checkinDate)}</p>
               </div>
             </button>
           `).join('')}
         </div>`;
+      }
+
+      function albumGroupCard(group, mode) {
+        const cover = group.photos[0] || {};
+        const detailText = mode === 'china'
+          ? `${group.cities.length} 个城市/地区 · ${group.photos.length} 张`
+          : `${group.type === 'special' ? '特殊地区' : group.continent} · ${group.photos.length} 张`;
+        return `
+          <button class="photo-fallback group relative h-56 overflow-hidden rounded-2xl border border-cyan-300/10 bg-[#111827]/60 text-left shadow-[0_0_22px_rgba(6,182,212,.06)] transition-all duration-300 ease-out hover:-translate-y-1 hover:scale-[1.01] hover:border-cyan-300/40 sm:h-64"
+            data-album-group="${mode}"
+            data-group-key="${escapeAlbum(group.key)}">
+            <img class="h-full w-full object-cover brightness-75 saturate-75 transition-all duration-300 ease-out group-hover:scale-105 group-hover:brightness-100 group-hover:saturate-100" alt="${escapeAlbum(group.name)}" src="${escapeAlbum(cover.imageUrl || '')}" onerror="this.style.display='none'">
+            <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-transparent"></div>
+            <div class="absolute inset-x-0 bottom-0 p-4">
+              <div class="mb-3 inline-flex items-center gap-1 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1 text-[11px] text-cyan-100">
+                <i data-lucide="${mode === 'china' ? 'map-pin' : 'globe-2'}" class="h-3.5 w-3.5"></i>
+                <span>${escapeAlbum(detailText)}</span>
+              </div>
+              <p class="text-xl font-semibold text-white">${escapeAlbum(group.name)}</p>
+              <p class="mt-1 text-xs text-[#9CA3AF]">最近更新 ${formatDate(cover.date || cover.checkin?.checkinDate || cover.createdAt) || '-'}</p>
+            </div>
+          </button>
+        `;
+      }
+
+      function albumGroupGrid(groups, emptyText, mode) {
+        if (!groups.length) {
+          return `<div class="rounded-3xl border border-[#1F2937] bg-[#111827]/60 p-6 text-center text-sm text-[#9CA3AF]">${emptyText}</div>`;
+        }
+        return `<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">${groups.map((group) => albumGroupCard(group, mode)).join('')}</div>`;
+      }
+
+      function bindPhotoButtons(root = document) {
+        root.querySelectorAll('[data-photo-id]').forEach((button) => {
+          button.addEventListener('click', () => openPhotoDrawer(appPhotos.find((photo) => photo.id === button.dataset.photoId)));
+        });
+      }
+
+      function openChinaAlbumGroup(group) {
+        openDrawer(`
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="text-sm text-[#06B6D4]">Province Album</p>
+              <h2 class="mt-1 text-2xl font-semibold text-[#F9FAFB]">${escapeAlbum(group.name)}相册</h2>
+              <p class="mt-2 text-sm text-[#9CA3AF]">${group.cities.length} 个城市/地区 · ${group.photos.length} 张照片</p>
+            </div>
+            <button class="drawer-close rounded-full border border-[#1F2937] bg-[#030712]/70 p-2 text-[#9CA3AF] transition-all duration-300 ease-out hover:text-[#F9FAFB]" aria-label="关闭">
+              <i data-lucide="x" class="h-5 w-5"></i>
+            </button>
+          </div>
+          <div class="mt-5 space-y-6">
+            ${group.cities.map((city) => `
+              <section>
+                <div class="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-semibold text-[#F9FAFB]">${escapeAlbum(city.name)}</p>
+                    <p class="mt-1 text-xs text-[#9CA3AF]">${city.photos.length} 张 · 最近 ${formatDate(city.photos[0]?.date || city.photos[0]?.checkin?.checkinDate || city.photos[0]?.createdAt) || '-'}</p>
+                  </div>
+                </div>
+                ${photoGrid(city.photos, '这个城市还没有照片')}
+              </section>
+            `).join('')}
+          </div>
+        `);
+        bindPhotoButtons(drawerContent);
+      }
+
+      function openWorldAlbumGroup(group) {
+        openDrawer(`
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="text-sm text-[#06B6D4]">Country Album</p>
+              <h2 class="mt-1 text-2xl font-semibold text-[#F9FAFB]">${escapeAlbum(group.name)}相册</h2>
+              <p class="mt-2 text-sm text-[#9CA3AF]">${escapeAlbum(group.type === 'special' ? '特殊地区' : group.continent)} · ${group.photos.length} 张照片</p>
+            </div>
+            <button class="drawer-close rounded-full border border-[#1F2937] bg-[#030712]/70 p-2 text-[#9CA3AF] transition-all duration-300 ease-out hover:text-[#F9FAFB]" aria-label="关闭">
+              <i data-lucide="x" class="h-5 w-5"></i>
+            </button>
+          </div>
+          <div class="mt-5">
+            ${photoGrid(group.photos, '这个国家还没有照片')}
+          </div>
+        `);
+        bindPhotoButtons(drawerContent);
       }
 
       page.innerHTML = `
@@ -1982,18 +2161,25 @@
         </div>
         <div id="album-all" class="h-1"></div>
         <div id="album-china" class="mb-4 flex items-center gap-3 scroll-mt-24">
-          <div class="h-px flex-1 bg-[#1F2937]"></div><p class="text-sm text-[#9CA3AF]">中国 · ${chinaPhotos.length} 张</p><div class="h-px flex-1 bg-[#1F2937]"></div>
+          <div class="h-px flex-1 bg-[#1F2937]"></div><p class="text-sm text-[#9CA3AF]">中国 · ${chinaGroups.length} 个省份 · ${chinaPhotos.length} 张</p><div class="h-px flex-1 bg-[#1F2937]"></div>
         </div>
-        ${photoGrid(chinaPhotos, '还没有中国照片')}
+        ${albumGroupGrid(chinaGroups, '还没有中国照片', 'china')}
         <div id="album-world" class="mb-4 mt-8 flex items-center gap-3 scroll-mt-24">
-          <div class="h-px flex-1 bg-[#1F2937]"></div><p class="text-sm text-[#9CA3AF]">世界 · ${worldPhotos.length} 张</p><div class="h-px flex-1 bg-[#1F2937]"></div>
+          <div class="h-px flex-1 bg-[#1F2937]"></div><p class="text-sm text-[#9CA3AF]">世界 · ${worldGroups.length} 个国家/地区 · ${worldPhotos.length} 张</p><div class="h-px flex-1 bg-[#1F2937]"></div>
         </div>
-        ${photoGrid(worldPhotos, '还没有世界照片')}
+        ${albumGroupGrid(worldGroups, '还没有世界照片', 'world')}
       `;
-      page.querySelectorAll('[data-photo-id]').forEach((button) => {
-        button.addEventListener('click', () => openPhotoDrawer(appPhotos.find((photo) => photo.id === button.dataset.photoId)));
+      page.querySelectorAll('[data-album-group]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const groups = button.dataset.albumGroup === 'china' ? chinaGroups : worldGroups;
+          const group = groups.find((item) => item.key === button.dataset.groupKey);
+          if (!group) return;
+          if (button.dataset.albumGroup === 'china') openChinaAlbumGroup(group);
+          else openWorldAlbumGroup(group);
+        });
       });
       bindAlbumJumps();
+      createIcons();
     }
 
     function bindAlbumJumps() {

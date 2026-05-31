@@ -12,6 +12,7 @@ const nodeFiles = [
   'server/logger.js',
   'server/pagination.js',
   'server/start.js',
+  'server/start-server.js',
   'server/sms.js',
   'server/upload.js',
   'server/user-utils.js',
