@@ -91,6 +91,24 @@ const AccountSecurity = (() => {
     });
   }
 
+  function startButtonCooldown(button, originalText, seconds = 60) {
+    let remaining = Math.max(1, Math.ceil(Number(seconds) || 60));
+    button.disabled = true;
+    button.textContent = `\u7b49\u5f85 ${remaining}s`;
+    const timer = window.setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0 || !button.isConnected) {
+        window.clearInterval(timer);
+        if (button.isConnected) {
+          button.textContent = originalText;
+          button.disabled = false;
+        }
+        return;
+      }
+      button.textContent = `\u7b49\u5f85 ${remaining}s`;
+    }, 1000);
+  }
+
   function field(label, name, attrs = '') {
     return `
       <label class="block">
@@ -374,20 +392,27 @@ const AccountSecurity = (() => {
     const sendButton = form.querySelector('.send-code');
     sendButton.addEventListener('click', async () => {
       clearErrors(form);
+      const originalText = sendButton.textContent;
       try {
         const value = form[copy.name].value.trim();
         if (!value) {
           setError(form, copy.name, `请输入${copy.target}`);
           return;
         }
+        sendButton.disabled = true;
+        sendButton.textContent = '\u53d1\u9001\u4e2d...';
         const result = await app().apiRequest(copy.sendPath, { method: 'POST', body: JSON.stringify({ email: value }) });
         sendButton.disabled = true;
         sendButton.textContent = result.devCode ? `验证码 ${result.devCode}` : '已发送';
-        window.setTimeout(() => {
-          sendButton.disabled = false;
-          sendButton.textContent = '发送验证码';
-        }, 60000);
+        startButtonCooldown(sendButton, originalText, 60);
       } catch (error) {
+        const retryAfter = Number(error.retryAfterSeconds || error.details?.retryAfterSeconds || 0);
+        if (error.status === 429 && retryAfter > 0) {
+          startButtonCooldown(sendButton, originalText, retryAfter);
+        } else {
+          sendButton.textContent = originalText;
+          sendButton.disabled = false;
+        }
         setError(form, 'form', error.message || '验证码发送失败');
       }
     });

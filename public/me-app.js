@@ -101,6 +101,14 @@ async function apiRequest(path, options = {}) {
 
   const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
   const data = await response.json().catch(() => ({}));
+  const buildApiError = (fallbackMessage) => {
+    const error = new Error(data.message || fallbackMessage);
+    error.status = response.status;
+    error.code = data.code;
+    error.details = data.details;
+    error.retryAfterSeconds = Number(response.headers.get('Retry-After') || data.details?.retryAfterSeconds || 0);
+    return error;
+  };
   if (response.status === 401) {
     clearToken();
     currentUser = null;
@@ -112,8 +120,9 @@ async function apiRequest(path, options = {}) {
     throw new Error(data.message || '请重新登录');
   }
   if (!response.ok) {
-    showToast(data.message || '请求失败', 'error');
-    throw new Error(data.message || '请求失败');
+    const error = buildApiError('Request failed');
+    showToast(error.message, 'error');
+    throw error;
   }
   return data;
 }
@@ -353,23 +362,55 @@ async function submitAuth(path, body) {
   showToast('登录状态已保存', 'success');
 }
 
+function startButtonCooldown(button, originalText, seconds = 60) {
+  let remaining = Math.max(1, Math.ceil(Number(seconds) || 60));
+  button.disabled = true;
+  button.textContent = `\u7b49\u5f85 ${remaining}s`;
+  const timer = window.setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0 || !button.isConnected) {
+      window.clearInterval(timer);
+      if (button.isConnected) {
+        button.textContent = originalText;
+        button.disabled = false;
+      }
+      return;
+    }
+    button.textContent = `\u7b49\u5f85 ${remaining}s`;
+  }, 1000);
+}
+
 async function sendEmailCode(email, purpose, targetButton) {
-  if (!email) throw new Error('请先输入邮箱');
-  const result = await apiRequest('/auth/email/send', {
-    method: 'POST',
-    body: JSON.stringify({ email, purpose })
-  });
+  if (!email) throw new Error('\u8bf7\u5148\u8f93\u5165\u90ae\u7bb1');
+  const originalText = targetButton?.textContent || '';
   if (targetButton) {
-    const originalText = targetButton.textContent;
-    targetButton.textContent = result.devCode ? `验证码 ${result.devCode}` : '已发送';
     targetButton.disabled = true;
-    window.setTimeout(() => {
-      targetButton.textContent = originalText;
-      targetButton.disabled = false;
-    }, 60000);
+    targetButton.textContent = '\u53d1\u9001\u4e2d...';
   }
-  showToast(result.devCode ? `开发验证码：${result.devCode}` : '验证码已发送', 'success');
-  return result;
+
+  try {
+    const result = await apiRequest('/auth/email/send', {
+      method: 'POST',
+      body: JSON.stringify({ email, purpose })
+    });
+    if (targetButton) {
+      targetButton.textContent = result.devCode ? `\u9a8c\u8bc1\u7801 ${result.devCode}` : '\u5df2\u53d1\u9001';
+      startButtonCooldown(targetButton, originalText, 60);
+    }
+    showToast(result.devCode ? `\u5f00\u53d1\u9a8c\u8bc1\u7801: ${result.devCode}` : '\u9a8c\u8bc1\u7801\u5df2\u53d1\u9001', 'success');
+    return result;
+  } catch (error) {
+    if (targetButton) {
+      const retryAfter = Number(error.retryAfterSeconds || error.details?.retryAfterSeconds || 0);
+      if (error.status === 429 && retryAfter > 0) {
+        startButtonCooldown(targetButton, originalText, retryAfter);
+      } else {
+        targetButton.textContent = originalText;
+        targetButton.disabled = false;
+      }
+    }
+    throw error;
+  }
 }
 
 function openLoginDrawer() {
