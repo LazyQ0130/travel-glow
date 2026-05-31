@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const prisma = require('./db');
 const { config } = require('./config');
 const { AppError } = require('./errors');
+const smtpProvider = require('./email-providers/smtp');
 
 const CODE_TTL_MINUTES = 5;
 const SEND_COOLDOWN_SECONDS = 60;
@@ -17,6 +18,36 @@ function isValidEmail(email) {
 
 function createCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+async function sendEmailCode({ email, code, purpose }) {
+  if (config.emailProvider === 'mock') {
+    return { provider: 'mock' };
+  }
+
+  try {
+    await smtpProvider.sendMail({
+      to: email,
+      subject: 'Travel Glow verification code',
+      text: [
+        `Your Travel Glow verification code is: ${code}`,
+        '',
+        `Purpose: ${purpose}`,
+        `This code expires in ${CODE_TTL_MINUTES} minutes.`,
+        '',
+        'If you did not request this code, you can ignore this email.'
+      ].join('\n'),
+      config: config.smtp
+    });
+    return { provider: 'smtp' };
+  } catch (error) {
+    throw new AppError(
+      502,
+      'Failed to send verification email.',
+      'EMAIL_SEND_FAILED',
+      config.isProduction ? undefined : error.message
+    );
+  }
 }
 
 async function createEmailCode({ email, purpose, userId = null, ipAddress = '' }) {
@@ -49,11 +80,12 @@ async function createEmailCode({ email, purpose, userId = null, ipAddress = '' }
       ipAddress
     }
   });
+  await sendEmailCode({ email: normalized, code, purpose });
 
   return {
     email: normalized,
     expiresIn: CODE_TTL_MINUTES * 60,
-    devCode: config.isProduction ? undefined : code
+    devCode: config.emailProvider === 'mock' || !config.isProduction ? code : undefined
   };
 }
 
@@ -90,4 +122,4 @@ async function verifyEmailCode({ email, purpose, code }) {
   return normalized;
 }
 
-module.exports = { normalizeEmail, isValidEmail, createEmailCode, verifyEmailCode };
+module.exports = { normalizeEmail, isValidEmail, createEmailCode, verifyEmailCode, sendEmailCode };

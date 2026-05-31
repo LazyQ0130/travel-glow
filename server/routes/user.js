@@ -11,7 +11,6 @@ const { writeAuditLog } = require('../audit');
 const { uploadAvatar, uploadDir, deleteLocalUpload, validateUploadedFiles } = require('../upload');
 const { publicUser, ensureUserSettings } = require('../user-utils');
 const { buildStats } = require('./stats');
-const { verifySmsCode } = require('../sms');
 const { createEmailCode, verifyEmailCode, normalizeEmail } = require('../email-verification');
 const { AppError } = require('../errors');
 const { passwordIssues } = require('../security/password-policy');
@@ -27,12 +26,6 @@ const profileSchema = z.object({
   nickname: z.string().trim().min(1).max(30).optional(),
   bio: z.string().trim().max(160).optional(),
   email: z.union([z.literal(''), z.string().trim().email()]).optional()
-});
-
-const phoneSchema = z.object({
-  password: z.string().min(1),
-  phone: z.string().trim().min(8).max(20),
-  code: z.string().trim().length(6)
 });
 
 const passwordSchema = z.object({
@@ -128,17 +121,6 @@ async function assertEmailAvailable(email, userId) {
   if (existing) throw new AppError(409, 'Email is already in use.', 'EMAIL_IN_USE');
 }
 
-async function assertPhoneAvailable(phone, userId) {
-  const existing = await prisma.user.findFirst({
-    where: {
-      phone,
-      deletedAt: null,
-      id: { not: userId }
-    }
-  });
-  if (existing) throw new AppError(409, 'Phone number is already in use.', 'PHONE_IN_USE');
-}
-
 router.get('/profile', auth, async (req, res, next) => {
   try {
     const settings = await ensureUserSettings(req.user.id);
@@ -173,27 +155,6 @@ router.post('/security/verify-password', auth, sensitiveLimiter, validate(verify
     await assertCurrentPassword(req.user, req.body.password);
     await writeAuditLog(req, 'user.security.verify_password');
     res.json({ verified: true });
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.put('/phone', auth, sensitiveLimiter, validate(phoneSchema), async (req, res, next) => {
-  try {
-    const { password, phone, code } = req.body;
-    await assertCurrentPassword(req.user, password);
-    const cleanPhone = await verifySmsCode({ phone, purpose: 'bind_phone', code });
-    await assertPhoneAvailable(cleanPhone, req.user.id);
-    const user = await prisma.user.update({
-      where: { id: req.user.id },
-      data: {
-        phone: cleanPhone,
-        phoneVerifiedAt: new Date()
-      }
-    });
-    const settings = await ensureUserSettings(req.user.id);
-    await writeAuditLog(req, 'user.phone.update');
-    res.json({ ...publicUser(user), settings });
   } catch (error) {
     next(error);
   }
@@ -376,7 +337,6 @@ router.delete('/account', auth, sensitiveLimiter, validate(deleteAccountSchema),
       data: {
         deletedAt: now,
         email: null,
-        phone: null,
         username: null
       }
     });

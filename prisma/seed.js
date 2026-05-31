@@ -36,15 +36,13 @@ async function createPhotos(userId, checkinId, count) {
   }
 }
 
-async function createSeedUser({ username, nickname, email, phone, passwordHash }) {
+async function createSeedUser({ username, nickname, email, passwordHash }) {
   return prisma.user.create({
     data: {
       username,
       nickname,
       email,
-      phone,
       emailVerifiedAt: email ? new Date() : null,
-      phoneVerifiedAt: phone ? new Date() : null,
       passwordHash,
       bio: seedData.userProfile.bio,
       avatar: seedData.userProfile.avatar,
@@ -91,15 +89,15 @@ async function createInitialCheckinsForUser(user) {
 async function main() {
   await prisma.photo.deleteMany();
   await prisma.checkin.deleteMany();
-  await prisma.verificationCode.deleteMany();
+  await prisma.emailVerificationCode.deleteMany();
   await prisma.loginSession.deleteMany();
   await prisma.userSettings.deleteMany();
   await prisma.region.deleteMany();
   await prisma.user.deleteMany();
 
   const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
-  const defaultUser = await createSeedUser({ username: 'qyf', nickname: 'QYF', email: DEFAULT_EMAIL, phone: '13900000000', passwordHash });
-  const demoUser = await createSeedUser({ username: 'demo', nickname: 'Demo 旅光用户', email: DEMO_EMAIL, phone: '13800000000', passwordHash });
+  const defaultUser = await createSeedUser({ username: 'qyf', nickname: 'QYF', email: DEFAULT_EMAIL, passwordHash });
+  const demoUser = await createSeedUser({ username: 'demo', nickname: 'Demo 旅光用户', email: DEMO_EMAIL, passwordHash });
 
   for (const [index, region] of seedData.chinaRegions.entries()) {
     await prisma.region.create({

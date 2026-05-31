@@ -99,7 +99,7 @@ test('registration rejects weak passwords before creating an account', async () 
     body: JSON.stringify({
       username: `weak_${Date.now()}`,
       nickname: 'Weak Password',
-      phone: `139${Date.now().toString().slice(-8)}`,
+      email: `weak-${Date.now()}@travelglow.local`,
       password: '123456',
       code: '000000'
     })
@@ -139,18 +139,18 @@ test('password login creates a server-validated session and logout revokes it', 
   assert.equal(revokedResponse.status, 401);
 });
 
-test('mock phone verification supports phone login in development', async () => {
-  const codeResponse = await request('/auth/sms/send', {
+test('mock email verification supports email login in development', async () => {
+  const codeResponse = await request('/auth/email/send', {
     method: 'POST',
-    body: JSON.stringify({ phone: '13800000000', purpose: 'login' })
+    body: JSON.stringify({ email: 'demo@travelglow.local', purpose: 'login' })
   });
   const codeBody = await json(codeResponse);
   assert.equal(codeResponse.status, 200);
   assert.match(codeBody.devCode, /^\d{6}$/);
 
-  const loginResponse = await request('/auth/login/phone', {
+  const loginResponse = await request('/auth/login/email', {
     method: 'POST',
-    body: JSON.stringify({ phone: '13800000000', code: codeBody.devCode })
+    body: JSON.stringify({ email: 'demo@travelglow.local', code: codeBody.devCode })
   });
   const login = await json(loginResponse);
   assert.equal(loginResponse.status, 200);
@@ -282,39 +282,37 @@ test('password update can preserve or revoke other sessions', async () => {
   await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), username: null } });
 });
 
-test('phone binding requires both password and verification code', async () => {
+test('registration requires a register email verification code', async () => {
   const password = 'TravelGlow!2026';
-  const { user, username } = await createAuthUser('phonebind', password, { phone: `137${Date.now().toString().slice(-8)}` });
-  const login = await loginAs(username, password);
-  const nextPhone = `136${Date.now().toString().slice(-8)}`;
+  const suffix = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
+  const username = `reg_${suffix}`.slice(0, 24);
+  const email = `reg-${suffix}@travelglow.local`;
 
-  const codeResponse = await request('/auth/sms/send', {
+  const codeResponse = await request('/auth/email/send', {
     method: 'POST',
-    body: JSON.stringify({ phone: nextPhone, purpose: 'bind_phone' })
+    body: JSON.stringify({ email, purpose: 'register' })
   });
   const code = await json(codeResponse);
   assert.equal(codeResponse.status, 200);
   assert.match(code.devCode, /^\d{6}$/);
 
-  const badPasswordResponse = await request('/user/phone', {
-    method: 'PUT',
-    headers: { Authorization: `Bearer ${login.token}` },
-    body: JSON.stringify({ password: 'wrong-password', phone: nextPhone, code: code.devCode })
+  const registerResponse = await request('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      username,
+      nickname: 'Email Register',
+      email,
+      password,
+      code: code.devCode
+    })
   });
-  const badPassword = await json(badPasswordResponse);
-  assert.equal(badPasswordResponse.status, 400);
-  assert.equal(badPassword.code, 'INVALID_PASSWORD');
+  const registered = await json(registerResponse);
+  assert.equal(registerResponse.status, 200);
+  assert.ok(registered.token);
+  assert.equal(registered.user.username, username);
+  assert.match(registered.user.email, /\*/);
 
-  const bindResponse = await request('/user/phone', {
-    method: 'PUT',
-    headers: { Authorization: `Bearer ${login.token}` },
-    body: JSON.stringify({ password, phone: nextPhone, code: code.devCode })
-  });
-  const bind = await json(bindResponse);
-  assert.equal(bindResponse.status, 200);
-  assert.match(bind.phone, /\*/);
-
-  await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), username: null, phone: null } });
+  await prisma.user.update({ where: { id: registered.user.id }, data: { deletedAt: new Date(), username: null, email: null } });
 });
 
 test('email verification binds a new email and rejects duplicates', async () => {

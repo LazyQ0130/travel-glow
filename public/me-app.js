@@ -209,9 +209,8 @@ function settingsGroupsForRender() {
       items: [
         { key: 'profile', name: '账号资料', icon: 'user-cog', hint: '头像、昵称、签名与绑定信息', action: 'profile' },
         { key: 'password', name: '修改密码', icon: 'lock-keyhole', hint: '验证身份后更新登录密码', action: 'password' },
-        { key: 'phone', name: '换绑手机号', icon: 'smartphone', hint: currentUser?.phone || '绑定新的安全手机号', action: 'phone' },
         { key: 'email', name: '换绑邮箱', icon: 'mail', hint: currentUser?.email || '绑定新的安全邮箱', action: 'email' },
-        { key: 'devices', name: '登录设备管理', icon: 'monitor-smartphone', hint: `${currentSessions?.length || 0} 台活跃设备`, action: 'devices' }
+        { key: 'devices', name: '登录设备管理', icon: 'monitor', hint: `${currentSessions?.length || 0} 台活跃设备`, action: 'devices' }
       ]
     },
     {
@@ -354,11 +353,11 @@ async function submitAuth(path, body) {
   showToast('登录状态已保存', 'success');
 }
 
-async function sendSmsCode(phone, purpose, targetButton) {
-  if (!phone) throw new Error('请先输入手机号');
-  const result = await apiRequest('/auth/sms/send', {
+async function sendEmailCode(email, purpose, targetButton) {
+  if (!email) throw new Error('请先输入邮箱');
+  const result = await apiRequest('/auth/email/send', {
     method: 'POST',
-    body: JSON.stringify({ phone, purpose })
+    body: JSON.stringify({ email, purpose })
   });
   if (targetButton) {
     const originalText = targetButton.textContent;
@@ -382,15 +381,15 @@ function openLoginDrawer() {
       </div>
       <div class="mt-5 grid grid-cols-2 gap-2 rounded-2xl border border-[#1F2937] bg-[#030712]/70 p-1">
         <button type="button" class="login-mode rounded-xl bg-cyan-400/10 px-3 py-2 text-sm text-[#06B6D4]" data-mode="password">账号密码</button>
-        <button type="button" class="login-mode rounded-xl px-3 py-2 text-sm text-[#9CA3AF]" data-mode="phone">手机验证码</button>
+        <button type="button" class="login-mode rounded-xl px-3 py-2 text-sm text-[#9CA3AF]" data-mode="email">邮箱验证码</button>
       </div>
       <div class="mt-5 space-y-3">
         <div id="password-login-fields" class="space-y-3">
-          <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">账号名 / 手机号 / 邮箱</span><input name="identifier" autocomplete="username" required class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
+          <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">账号名 / 邮箱</span><input name="identifier" autocomplete="username" required class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
           <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">密码</span><input name="password" type="password" autocomplete="current-password" required class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
         </div>
-        <div id="phone-login-fields" class="hidden space-y-3">
-          <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">手机号</span><input name="phone" inputmode="tel" class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
+        <div id="email-login-fields" class="hidden space-y-3">
+          <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">邮箱</span><input name="email" type="email" class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
           <div class="grid grid-cols-[1fr_auto] gap-3">
             <input name="code" inputmode="numeric" placeholder="6 位验证码" class="rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50">
             <button type="button" class="send-login-code rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-sm text-[#06B6D4]">发送验证码</button>
@@ -416,16 +415,16 @@ function openLoginDrawer() {
         item.classList.toggle('text-[#9CA3AF]', !active);
       });
       form.querySelector('#password-login-fields').classList.toggle('hidden', mode !== 'password');
-      form.querySelector('#phone-login-fields').classList.toggle('hidden', mode !== 'phone');
+      form.querySelector('#email-login-fields').classList.toggle('hidden', mode !== 'email');
     });
   });
   form.querySelector('.send-login-code').addEventListener('click', async (event) => {
-    await sendSmsCode(form.phone.value.trim(), 'login', event.currentTarget);
+    await sendEmailCode(form.email.value.trim(), 'login', event.currentTarget);
   });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (mode === 'phone') {
-      await submitAuth('/auth/login/phone', { phone: form.phone.value.trim(), code: form.code.value.trim() });
+    if (mode === 'email') {
+      await submitAuth('/auth/login/email', { email: form.email.value.trim(), code: form.code.value.trim() });
       return;
     }
     await submitAuth('/auth/login', { identifier: form.identifier.value.trim(), password: form.password.value });
@@ -444,10 +443,9 @@ function openRegisterDrawer() {
       <div class="mt-5 space-y-3">
         <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">自定义账号名</span><input name="username" required pattern="[A-Za-z0-9_]{3,24}" placeholder="例如 qyf_travel" class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
         <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">昵称</span><input name="nickname" required class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
-        <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">绑定邮箱（可选）</span><input name="email" type="email" class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
-        <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">手机号</span><input name="phone" inputmode="tel" required class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
+        <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">邮箱</span><input name="email" type="email" required class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
         <div class="grid grid-cols-[1fr_auto] gap-3">
-          <input name="code" inputmode="numeric" required placeholder="短信验证码" class="rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50">
+          <input name="code" inputmode="numeric" required placeholder="邮箱验证码" class="rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50">
           <button type="button" class="send-register-code rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-sm text-[#06B6D4]">发送验证码</button>
         </div>
         <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">密码</span><input name="password" type="password" minlength="6" required class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
@@ -459,7 +457,7 @@ function openRegisterDrawer() {
   `);
   const form = document.getElementById('register-form');
   form.querySelector('.send-register-code').addEventListener('click', async (event) => {
-    await sendSmsCode(form.phone.value.trim(), 'register', event.currentTarget);
+    await sendEmailCode(form.email.value.trim(), 'register', event.currentTarget);
   });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -501,15 +499,6 @@ openEditProfileDrawer = function openProfileFormDrawer() {
         </div>
         <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">账号名</span><input name="username" value="${escapeHtml(currentUser.username || '')}" pattern="[A-Za-z0-9_]{3,24}" class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
         <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">绑定邮箱</span><input name="email" type="email" value="${escapeHtml(currentUser.email || '')}" class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
-        <div class="rounded-2xl border border-[#1F2937] bg-[#030712]/70 p-4">
-          <p class="text-sm text-[#9CA3AF]">当前手机号</p>
-          <p class="mt-1 text-sm text-[#F9FAFB]">${escapeHtml(currentUser.phone || '未绑定')}</p>
-          <div class="mt-3 grid grid-cols-[1fr_auto] gap-3">
-            <input name="phone" inputmode="tel" placeholder="新手机号" class="rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50">
-            <button type="button" class="send-bind-code rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-sm text-[#06B6D4]">发送验证码</button>
-          </div>
-          <input name="phoneCode" inputmode="numeric" placeholder="验证码" class="mt-3 w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50">
-        </div>
         <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">昵称</span><input name="nickname" value="${escapeHtml(currentUser.nickname)}" required class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
         <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">个性签名</span><textarea name="bio" rows="4" class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50">${escapeHtml(currentUser.bio || '')}</textarea></label>
       </div>
@@ -520,9 +509,6 @@ openEditProfileDrawer = function openProfileFormDrawer() {
     </form>
   `);
   const profileForm = document.getElementById('profile-form');
-  profileForm.querySelector('.send-bind-code').addEventListener('click', async (event) => {
-    await sendSmsCode(profileForm.phone.value.trim(), 'bind_phone', event.currentTarget);
-  });
   profileForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = event.target;
@@ -542,12 +528,6 @@ openEditProfileDrawer = function openProfileFormDrawer() {
         bio: form.bio.value.trim()
       })
     });
-    if (form.phone.value.trim()) {
-      await apiRequest('/user/phone', {
-        method: 'PUT',
-        body: JSON.stringify({ phone: form.phone.value.trim(), code: form.phoneCode.value.trim() })
-      });
-    }
     await refreshAll();
     await loadAuthMe().catch(() => {});
     showToast('资料已保存', 'success');
@@ -602,7 +582,7 @@ function openSecurityDrawer() {
   openDrawer(`
     <form id="password-form">
       <div class="flex items-start justify-between gap-4">
-        <div><p class="text-sm text-[#06B6D4]">Security</p><h2 class="mt-1 text-2xl font-semibold text-[#F9FAFB]">登录与安全</h2><p class="mt-2 text-sm text-[#9CA3AF]">${escapeHtml(currentUser.email || currentUser.phone || currentUser.username)}</p></div>
+        <div><p class="text-sm text-[#06B6D4]">Security</p><h2 class="mt-1 text-2xl font-semibold text-[#F9FAFB]">登录与安全</h2><p class="mt-2 text-sm text-[#9CA3AF]">${escapeHtml(currentUser.email || currentUser.username)}</p></div>
         <button type="button" class="drawer-close rounded-full border border-[#1F2937] bg-[#030712]/70 p-2 text-[#9CA3AF]"><i data-lucide="x" class="h-5 w-5"></i></button>
       </div>
       <div class="mt-5 rounded-2xl border border-cyan-300/10 bg-[#030712]/70 p-4 text-sm text-[#9CA3AF]">当前状态：已登录。JWT 保存在本地浏览器，并绑定服务端会话；退出登录后该 token 会立即失效。</div>
@@ -673,7 +653,6 @@ function handleMeAction(action) {
     case 'profile': openEditProfileDrawer(); break;
     case 'privacy': openPrivacySettingsDrawer(); break;
     case 'password':
-    case 'phone':
     case 'email':
     case 'devices':
     case 'theme':

@@ -1,10 +1,8 @@
-# 生产环境配置说明
+# Production Configuration
 
-本文档记录 Travel Glow 上线前需要配置的环境变量和人工操作。
+Use `.env.example` as the template for production configuration.
 
-## 环境变量
-
-以 `.env.example` 为模板创建生产环境 `.env`。生产环境至少需要确认以下变量：
+## Required Environment
 
 ```env
 NODE_ENV=production
@@ -17,78 +15,69 @@ JWT_EXPIRES_IN="30d"
 CORS_ORIGINS="https://your-domain.example"
 TRUST_PROXY=true
 
-SMS_PROVIDER=aliyun
-SMS_ACCESS_KEY=
-SMS_ACCESS_SECRET=
-SMS_SIGN_NAME=
-SMS_TEMPLATE_CODE=
-SMS_TEMPLATE_PARAM_NAME=code
-SMS_TIMEOUT_MS=5000
+EMAIL_PROVIDER=smtp
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-account@example.com
+SMTP_PASSWORD=your-smtp-password-or-app-password
+SMTP_FROM=your-account@example.com
+SMTP_TIMEOUT_MS=10000
 
 LOG_LEVEL=info
 RUN_MIGRATIONS_ON_START=true
 ```
 
-腾讯云短信还需要：
+## Email Verification
 
-```env
-SMS_PROVIDER=tencent
-SMS_APP_ID=
-SMS_REGION=ap-guangzhou
-SMS_DEFAULT_COUNTRY_CODE=+86
-```
+Travel Glow supports two email verification providers:
 
-## 短信模板
+- `EMAIL_PROVIDER=mock`: development mode. The API response includes `devCode`.
+- `EMAIL_PROVIDER=smtp`: production mode. A plain-text verification email is sent through SMTP.
 
-当前验证码发送逻辑默认把验证码作为模板变量传入：
+SMTP notes:
 
-- 阿里云：`TemplateParam` 为 `{"code":"123456"}`，变量名可通过 `SMS_TEMPLATE_PARAM_NAME` 修改。
-- 腾讯云：`TemplateParamSet` 为 `["123456"]`，模板内第一个变量应为验证码。
+- Use `SMTP_SECURE=true` for implicit TLS, usually port `465`.
+- Use `SMTP_SECURE=false` for plain SMTP with STARTTLS upgrade, usually port `587`.
+- Gmail normally requires 2FA and an App Password.
+- QQ Mail and 163 Mail normally require an SMTP authorization code.
 
-如果控制台里申请的模板变量名或顺序不同，需要同步调整环境变量或模板内容。
+## PostgreSQL Notes
 
-## PostgreSQL 注意事项
+The current Prisma datasource provider is still `sqlite`. For a PostgreSQL production rollout:
 
-当前 `prisma/schema.prisma` 的 datasource provider 仍是 `sqlite`。切换生产 PostgreSQL 时，需要人工完成：
+1. Change `prisma/schema.prisma` datasource provider from `sqlite` to `postgresql`.
+2. Set production `DATABASE_URL` to the PostgreSQL connection string.
+3. Regenerate and review migrations against PostgreSQL.
+4. Back up data and prepare rollback before applying migrations in production.
 
-1. 将 `prisma/schema.prisma` 中 datasource provider 从 `sqlite` 改为 `postgresql`。
-2. 设置生产 `DATABASE_URL` 为 PostgreSQL 连接串。
-3. 基于 PostgreSQL 重新生成并检查迁移。
-4. 在生产库执行迁移前做好备份和回滚预案。
-
-## Docker 启动
-
-镜像默认通过 `scripts/start.sh` 启动：
+## Docker Start
 
 ```sh
 docker build -t travel-glow .
 docker run --env-file .env -p 3000:3000 travel-glow
 ```
 
-默认会在启动时执行：
+The image starts with `scripts/start.sh`. By default it runs:
 
 ```sh
 npx prisma migrate deploy
 ```
 
-如需由 CI/CD 单独执行迁移，可设置：
+To run migrations separately in CI/CD:
 
 ```env
 RUN_MIGRATIONS_ON_START=false
 ```
 
-## 必须由你手动完成的操作
+## Manual Operations
 
-1. 在阿里云或腾讯云控制台注册账号并完成实名认证。
-2. 开通短信服务。
-3. 申请短信签名，并等待审核通过。
-4. 申请验证码短信模板，并等待审核通过。
-5. 获取 API Key 和 Secret，并按最小权限原则配置访问策略。
-6. 腾讯云需要额外获取短信应用 ID，并填入 `SMS_APP_ID`。
-7. 配置 PostgreSQL 数据库、账号、强密码、备份策略和网络访问规则。
-8. 如果从 SQLite 切换到 PostgreSQL，按上文手动调整 Prisma datasource 并重新生成迁移。
-9. 配置 Nginx 反向代理，将外部域名转发到应用端口。
-10. 配置 HTTPS 证书和自动续期。
-11. 配置 PM2 或容器编排平台的进程管理、重启策略和日志采集。
-12. 配置防火墙，只开放必要端口。
-13. 在真实手机号上完成短信发送验收，并确认模板变量正确。
+1. Configure SMTP variables in `.env`.
+2. If using Gmail, enable 2FA and create an App Password.
+3. If using QQ Mail or 163 Mail, enable SMTP and create an authorization code.
+4. Send a real verification email before release and confirm delivery.
+5. Configure PostgreSQL database, credentials, backup, and network access rules.
+6. Configure Nginx reverse proxy.
+7. Configure HTTPS certificate and renewal.
+8. Configure PM2 or container orchestration restart policy and log collection.
+9. Configure firewall rules and expose only required ports.

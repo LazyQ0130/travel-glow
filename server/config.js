@@ -26,7 +26,7 @@ function booleanFromEnv(name, fallback) {
   return ['1', 'true', 'yes', 'on'].includes(String(raw).toLowerCase());
 }
 
-const smsProvider = String(process.env.SMS_PROVIDER || 'mock').trim().toLowerCase();
+const emailProvider = String(process.env.EMAIL_PROVIDER || 'mock').trim().toLowerCase();
 
 const config = {
   appName: 'travel-glow',
@@ -39,20 +39,15 @@ const config = {
   corsOrigins: csv(process.env.CORS_ORIGINS),
   trustProxy: booleanFromEnv('TRUST_PROXY', false),
   logLevel: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
-  smsProvider,
-  sms: {
-    provider: smsProvider,
-    accessKey: process.env.SMS_ACCESS_KEY || '',
-    accessSecret: process.env.SMS_ACCESS_SECRET || '',
-    signName: process.env.SMS_SIGN_NAME || '',
-    templateCode: process.env.SMS_TEMPLATE_CODE || '',
-    templateParamName: process.env.SMS_TEMPLATE_PARAM_NAME || 'code',
-    appId: process.env.SMS_APP_ID || process.env.SMS_TENCENT_APP_ID || process.env.SMS_SDK_APP_ID || '',
-    region: process.env.SMS_REGION || 'ap-guangzhou',
-    defaultCountryCode: process.env.SMS_DEFAULT_COUNTRY_CODE || '+86',
-    timeoutMs: numberFromEnv('SMS_TIMEOUT_MS', 5000),
-    aliyunEndpoint: process.env.SMS_ALIYUN_ENDPOINT || 'https://dysmsapi.aliyuncs.com/',
-    tencentEndpoint: process.env.SMS_TENCENT_ENDPOINT || 'https://sms.tencentcloudapi.com/'
+  emailProvider,
+  smtp: {
+    host: process.env.SMTP_HOST || '',
+    port: numberFromEnv('SMTP_PORT', 587),
+    secure: booleanFromEnv('SMTP_SECURE', false),
+    user: process.env.SMTP_USER || '',
+    password: process.env.SMTP_PASSWORD || '',
+    from: process.env.SMTP_FROM || process.env.SMTP_USER || '',
+    timeoutMs: numberFromEnv('SMTP_TIMEOUT_MS', 10000)
   },
   isProduction: process.env.NODE_ENV === 'production'
 };
@@ -78,31 +73,35 @@ function assertRuntimeConfig() {
     throw new Error('CORS_ORIGINS must include the production frontend origin.');
   }
 
-  if (!['aliyun', 'tencent', 'mock'].includes(config.sms.provider)) {
-    throw new Error('SMS_PROVIDER must be one of: aliyun, tencent, mock.');
+  if (!['smtp', 'mock'].includes(config.emailProvider)) {
+    throw new Error('EMAIL_PROVIDER must be one of: smtp, mock.');
   }
 
-  if (!Number.isInteger(config.sms.timeoutMs) || config.sms.timeoutMs < 1000 || config.sms.timeoutMs > 30000) {
-    throw new Error('SMS_TIMEOUT_MS must be an integer between 1000 and 30000.');
+  if (config.isProduction && config.emailProvider === 'mock') {
+    throw new Error('EMAIL_PROVIDER must be smtp in production.');
   }
 
-  if (config.sms.provider !== 'mock') {
+  if (!Number.isInteger(config.smtp.port) || config.smtp.port < 1 || config.smtp.port > 65535) {
+    throw new Error('SMTP_PORT must be an integer between 1 and 65535.');
+  }
+
+  if (!Number.isInteger(config.smtp.timeoutMs) || config.smtp.timeoutMs < 1000 || config.smtp.timeoutMs > 30000) {
+    throw new Error('SMTP_TIMEOUT_MS must be an integer between 1000 and 30000.');
+  }
+
+  if (config.emailProvider === 'smtp') {
     const required = [
-      ['SMS_ACCESS_KEY', config.sms.accessKey],
-      ['SMS_ACCESS_SECRET', config.sms.accessSecret],
-      ['SMS_SIGN_NAME', config.sms.signName],
-      ['SMS_TEMPLATE_CODE', config.sms.templateCode]
+      ['SMTP_HOST', config.smtp.host],
+      ['SMTP_USER', config.smtp.user],
+      ['SMTP_PASSWORD', config.smtp.password],
+      ['SMTP_FROM', config.smtp.from]
     ];
 
     for (const [name, value] of required) {
       if (!value) {
-        throw new Error(`${name} must be set when SMS_PROVIDER=${config.sms.provider}.`);
+        throw new Error(`${name} must be set when EMAIL_PROVIDER=smtp.`);
       }
     }
-  }
-
-  if (config.sms.provider === 'tencent' && !config.sms.appId) {
-    throw new Error('SMS_APP_ID must be set when SMS_PROVIDER=tencent.');
   }
 }
 

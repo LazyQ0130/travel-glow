@@ -31,8 +31,8 @@ Every response also includes an `X-Request-Id` header.
 
 - `POST /auth/register`
 - `POST /auth/login`
-- `POST /auth/login/phone`
-- `POST /auth/sms/send`
+- `POST /auth/email/send`
+- `POST /auth/login/email`
 - `POST /auth/logout`
 - `GET /auth/me`
 - `GET /auth/sessions`
@@ -47,7 +47,6 @@ Password registration and password changes require at least 10 characters with l
 - `PUT /user/profile`
 - `POST /user/avatar`
 - `POST /user/security/verify-password`
-- `PUT /user/phone`
 - `POST /user/email/code`
 - `PUT /user/email`
 - `PUT /user/password`
@@ -60,10 +59,10 @@ Password registration and password changes require at least 10 characters with l
 
 Account deletion is a soft delete for the user and content records, while active sessions are revoked.
 
-Sensitive account changes require the current password. Phone changes require a `bind_phone`
-SMS code. Email changes use `POST /user/email/code` to create a mock verification code in
-development, then `PUT /user/email` to verify and bind the new email. Password changes accept
-`revokeOtherSessions`, which defaults to `true`.
+Sensitive account changes require the current password. Email changes use `POST /user/email/code`
+to create a verification code in development or send a real SMTP email in production, then
+`PUT /user/email` to verify and bind the new email. Password changes accept `revokeOtherSessions`,
+which defaults to `true`.
 
 ## Regions
 

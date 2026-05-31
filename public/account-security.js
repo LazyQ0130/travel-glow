@@ -1,7 +1,6 @@
 const AccountSecurity = (() => {
   const state = {
     password: {},
-    phone: {},
     email: {}
   };
 
@@ -175,7 +174,6 @@ const AccountSecurity = (() => {
           </form>
         `)}
         ${panel(`
-          ${profileRow('手机号', current.phone || '未绑定', '更换', 'phone')}
           ${profileRow('邮箱', current.email || '未绑定', '更换', 'email')}
           ${profileRow('注册时间', current.createdAt ? new Date(current.createdAt).toLocaleString() : '未知', '', '')}
         `)}
@@ -320,9 +318,7 @@ const AccountSecurity = (() => {
 
   function openBindFlow(kind, step = 1) {
     if (!ensureAuth()) return;
-    const copy = kind === 'phone'
-      ? { title: '换绑手机号', target: '新手机号', name: 'phone', input: 'inputmode="tel"', sendPath: '/auth/sms/send', submitPath: '/user/phone' }
-      : { title: '换绑邮箱', target: '新邮箱', name: 'email', input: 'type="email"', sendPath: '/user/email/code', submitPath: '/user/email' };
+    const copy = { title: '换绑邮箱', target: '新邮箱', name: 'email', input: 'type="email"', sendPath: '/user/email/code', submitPath: '/user/email' };
     if (step === 1) return renderBindVerify(kind, copy);
     if (step === 2) return renderBindTarget(kind, copy);
     return finish(`${copy.title}成功`, `${copy.target.replace('新', '')}已更新。`);
@@ -384,9 +380,7 @@ const AccountSecurity = (() => {
           setError(form, copy.name, `请输入${copy.target}`);
           return;
         }
-        const result = kind === 'phone'
-          ? await app().apiRequest(copy.sendPath, { method: 'POST', body: JSON.stringify({ phone: value, purpose: 'bind_phone' }) })
-          : await app().apiRequest(copy.sendPath, { method: 'POST', body: JSON.stringify({ email: value }) });
+        const result = await app().apiRequest(copy.sendPath, { method: 'POST', body: JSON.stringify({ email: value }) });
         sendButton.disabled = true;
         sendButton.textContent = result.devCode ? `验证码 ${result.devCode}` : '已发送';
         window.setTimeout(() => {
@@ -401,9 +395,7 @@ const AccountSecurity = (() => {
       event.preventDefault();
       await submitForm(form, async () => {
         const value = form[copy.name].value.trim();
-        const body = kind === 'phone'
-          ? { password: state[kind].password, phone: value, code: form.code.value.trim() }
-          : { password: state[kind].password, email: value, code: form.code.value.trim() };
+        const body = { password: state[kind].password, email: value, code: form.code.value.trim() };
         await app().apiRequest(copy.submitPath, { method: 'PUT', body: JSON.stringify(body) });
         await app().loadAuthMe();
         await app().refreshAll();
@@ -516,7 +508,6 @@ const AccountSecurity = (() => {
       home: openHome,
       profile: openProfile,
       password: () => openPasswordStep(1),
-      phone: () => openBindFlow('phone', 1),
       email: () => openBindFlow('email', 1),
       devices: openDevices,
       privacy: () => openChoice({

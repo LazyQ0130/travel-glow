@@ -8,7 +8,7 @@ const validate = require('../middleware/validate');
 const rateLimit = require('../middleware/rate-limit');
 const { writeAuditLog } = require('../audit');
 const { publicUser, ensureUserSettings, sessionMeta } = require('../user-utils');
-const { normalizePhone, createSmsCode, verifySmsCode } = require('../sms');
+const { createEmailCode, verifyEmailCode, normalizeEmail } = require('../email-verification');
 const { config } = require('../config');
 const { AppError } = require('../errors');
 const { passwordIssues } = require('../security/password-policy');
@@ -18,18 +18,16 @@ const router = express.Router();
 
 const usernameSchema = z.string().trim().min(3).max(24).regex(/^[a-zA-Z0-9_]+$/);
 const passwordSchema = z.string().min(1).max(72);
-const optionalEmailSchema = z.union([z.literal(''), z.string().trim().email()]).optional();
 
-const sendSmsSchema = z.object({
-  phone: z.string().trim().min(8).max(20),
-  purpose: z.enum(['register', 'login', 'bind_phone']).default('login')
+const sendEmailSchema = z.object({
+  email: z.string().trim().email(),
+  purpose: z.enum(['register', 'login']).default('login')
 });
 
 const registerSchema = z.object({
   username: usernameSchema,
   nickname: z.string().trim().min(1).max(30),
-  email: optionalEmailSchema,
-  phone: z.string().trim().min(8).max(20),
+  email: z.string().trim().email(),
   password: passwordSchema,
   code: z.string().trim().length(6)
 });
@@ -40,8 +38,8 @@ const loginSchema = z.object({
   password: z.string().min(1)
 }).refine((data) => data.identifier || data.email, { message: 'Identifier or email is required.' });
 
-const phoneLoginSchema = z.object({
-  phone: z.string().trim().min(8).max(20),
+const emailLoginSchema = z.object({
+  email: z.string().trim().email(),
   code: z.string().trim().length(6)
 });
 
@@ -62,23 +60,31 @@ function normalizeUsername(username = '') {
   return String(username).trim().toLowerCase();
 }
 
-function normalizeEmail(email = '') {
-  return String(email).trim().toLowerCase();
-}
-
 async function findUserByIdentifier(identifier = '') {
   const value = String(identifier).trim();
-  const normalizedPhone = normalizePhone(value);
   return prisma.user.findFirst({
     where: {
       deletedAt: null,
       OR: [
         { username: normalizeUsername(value) },
-        { email: normalizeEmail(value) },
-        { phone: normalizedPhone }
+        { email: normalizeEmail(value) }
       ]
     }
   });
+}
+
+async function findActiveUserByEmail(email = '') {
+  return prisma.user.findFirst({
+    where: {
+      email: normalizeEmail(email),
+      deletedAt: null
+    }
+  });
+}
+
+async function assertEmailAvailable(email) {
+  const existing = await findActiveUserByEmail(email);
+  if (existing) throw new AppError(409, 'Email is already in use.', 'EMAIL_IN_USE');
 }
 
 function assertStrongPassword(password) {
@@ -89,7 +95,7 @@ function assertStrongPassword(password) {
 }
 
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60, keyPrefix: 'auth' });
-const smsLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, keyPrefix: 'sms' });
+const emailCodeLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 8, keyPrefix: 'email-code' });
 
 function formatSession(session, currentSessionId) {
   return {
@@ -103,12 +109,22 @@ function formatSession(session, currentSessionId) {
   };
 }
 
-router.post('/sms/send', smsLimiter, validate(sendSmsSchema), async (req, res, next) => {
+router.post('/email/send', emailCodeLimiter, validate(sendEmailSchema), async (req, res, next) => {
   try {
-    const { phone, purpose = 'login' } = req.body;
-    const result = await createSmsCode({
-      phone,
+    const { email, purpose = 'login' } = req.body;
+    const cleanEmail = normalizeEmail(email);
+    const user = await findActiveUserByEmail(cleanEmail);
+
+    if (purpose === 'register') {
+      if (user) throw new AppError(409, 'Email is already in use.', 'EMAIL_IN_USE');
+    } else if (!user) {
+      throw new AppError(401, 'Email is not registered.', 'EMAIL_NOT_REGISTERED');
+    }
+
+    const result = await createEmailCode({
+      email: cleanEmail,
       purpose,
+      userId: user?.id || null,
       ipAddress: req.ip || req.socket?.remoteAddress || ''
     });
     res.json({ message: 'Verification code sent.', ...result });
@@ -119,12 +135,13 @@ router.post('/sms/send', smsLimiter, validate(sendSmsSchema), async (req, res, n
 
 router.post('/register', authLimiter, validate(registerSchema), async (req, res, next) => {
   try {
-    const { username, nickname, email, phone, password, code } = req.body;
+    const { username, nickname, email, password, code } = req.body;
     assertStrongPassword(password);
 
     const cleanUsername = normalizeUsername(username);
-    const cleanEmail = email ? normalizeEmail(email) : null;
-    const cleanPhone = await verifySmsCode({ phone, purpose: 'register', code });
+    const cleanEmail = normalizeEmail(email);
+    await assertEmailAvailable(cleanEmail);
+    await verifyEmailCode({ email: cleanEmail, purpose: 'register', code });
 
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
@@ -132,9 +149,7 @@ router.post('/register', authLimiter, validate(registerSchema), async (req, res,
         username: cleanUsername,
         nickname,
         email: cleanEmail,
-        phone: cleanPhone,
-        phoneVerifiedAt: new Date(),
-        emailVerifiedAt: cleanEmail ? new Date() : null,
+        emailVerifiedAt: new Date(),
         passwordHash,
         settings: { create: {} }
       },
@@ -175,18 +190,18 @@ router.post('/login', authLimiter, validate(loginSchema), async (req, res, next)
   }
 });
 
-router.post('/login/phone', authLimiter, validate(phoneLoginSchema), async (req, res, next) => {
+router.post('/login/email', authLimiter, validate(emailLoginSchema), async (req, res, next) => {
   try {
-    const { phone, code } = req.body;
-    const cleanPhone = await verifySmsCode({ phone, purpose: 'login', code });
-    const user = await prisma.user.findFirst({ where: { phone: cleanPhone, deletedAt: null } });
-    if (!user) throw new AppError(401, 'Phone number is not registered.', 'PHONE_NOT_REGISTERED');
+    const { email, code } = req.body;
+    const cleanEmail = await verifyEmailCode({ email, purpose: 'login', code });
+    const user = await findActiveUserByEmail(cleanEmail);
+    if (!user) throw new AppError(401, 'Email is not registered.', 'EMAIL_NOT_REGISTERED');
 
     assertNotLocked(user);
     await clearFailedLogins(user.id);
     await ensureUserSettings(user.id);
     const session = await createSession(req, user.id);
-    await writeAuditLog(req, 'auth.login', { userId: user.id, method: 'phone' });
+    await writeAuditLog(req, 'auth.login', { userId: user.id, method: 'email_code' });
     res.json({ token: signToken(user, session), user: publicUser(user) });
   } catch (error) {
     next(error);

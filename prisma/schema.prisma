@@ -12,9 +12,7 @@ model User {
   username     String?   @unique
   nickname     String
   email        String?   @unique
-  phone        String?   @unique
   emailVerifiedAt DateTime?
-  phoneVerifiedAt DateTime?
   passwordHash String
   avatar       String?
   bio          String?
@@ -30,28 +28,9 @@ model User {
   photos       Photo[]
   settings     UserSettings?
   sessions     LoginSession[]
-  verificationCodes VerificationCode[]
   emailVerificationCodes EmailVerificationCode[]
 
   @@index([deletedAt])
-}
-
-model VerificationCode {
-  id         String    @id @default(cuid())
-  userId     String?
-  phone      String
-  purpose    String
-  codeHash   String
-  expiresAt  DateTime
-  consumedAt DateTime?
-  attempts   Int       @default(0)
-  ipAddress  String?
-  createdAt  DateTime  @default(now())
-  user       User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([phone, purpose])
-  @@index([phone, purpose, consumedAt])
-  @@index([userId])
 }
 
 model EmailVerificationCode {

@@ -34,7 +34,6 @@ http://localhost:3000
 
 ```text
 username: demo
-phone: 13800000000
 email: demo@travelglow.local
 password: 123456
 ```
@@ -51,7 +50,7 @@ JWT_EXPIRES_IN="30d"
 PORT=3000
 CORS_ORIGINS="http://localhost:3000"
 LOG_LEVEL="debug"
-SMS_PROVIDER="mock"
+EMAIL_PROVIDER="mock"
 ```
 
 生产环境必须提供强随机 `JWT_SECRET`。如果 `NODE_ENV=production` 但仍使用默认弱密钥，服务会拒绝启动。

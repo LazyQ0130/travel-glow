@@ -49,7 +49,7 @@ function errorResponse(error) {
   if (error.code === 'P2002') {
     return {
       statusCode: 409,
-      body: { message: 'Username, email, or phone is already in use.', code: 'UNIQUE_CONSTRAINT' }
+      body: { message: 'Username or email is already in use.', code: 'UNIQUE_CONSTRAINT' }
     };
   }
 
