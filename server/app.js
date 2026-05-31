@@ -22,6 +22,9 @@ assertRuntimeConfig();
 const app = express();
 
 app.disable('x-powered-by');
+if (config.trustProxy) {
+  app.set('trust proxy', 1);
+}
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: false

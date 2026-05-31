@@ -2,6 +2,8 @@ const bcrypt = require('bcryptjs');
 const prisma = require('./db');
 const { config } = require('./config');
 const { AppError } = require('./errors');
+const aliyunProvider = require('./sms-providers/aliyun');
+const tencentProvider = require('./sms-providers/tencent');
 
 const CODE_TTL_MINUTES = 5;
 const SEND_COOLDOWN_SECONDS = 60;
@@ -17,6 +19,34 @@ function isValidPhone(phone) {
 
 function createCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function getProvider() {
+  if (config.sms.provider === 'aliyun') return aliyunProvider;
+  if (config.sms.provider === 'tencent') return tencentProvider;
+  return {
+    async sendVerificationCode() {
+      return { provider: 'mock' };
+    }
+  };
+}
+
+async function sendVerificationCode({ phone, code, purpose }) {
+  try {
+    return await getProvider().sendVerificationCode({
+      phone,
+      code,
+      purpose,
+      config: config.sms
+    });
+  } catch (error) {
+    throw new AppError(
+      502,
+      'Failed to send verification code.',
+      'SMS_SEND_FAILED',
+      config.isProduction ? undefined : error.message
+    );
+  }
 }
 
 async function createSmsCode({ phone, purpose, userId = null, ipAddress = '' }) {
@@ -49,6 +79,7 @@ async function createSmsCode({ phone, purpose, userId = null, ipAddress = '' }) 
       ipAddress
     }
   });
+  await sendVerificationCode({ phone: normalized, code, purpose });
 
   return {
     phone: normalized,

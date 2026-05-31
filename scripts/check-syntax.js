@@ -14,6 +14,8 @@ const nodeFiles = [
   'server/start.js',
   'server/start-server.js',
   'server/sms.js',
+  'server/sms-providers/aliyun.js',
+  'server/sms-providers/tencent.js',
   'server/upload.js',
   'server/user-utils.js',
   'server/utils/mask.js',
