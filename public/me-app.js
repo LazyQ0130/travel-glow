@@ -203,7 +203,6 @@ async function refreshAll() {
 }
 
 function settingsGroupsForRender() {
-  const s = currentSettings || {};
   return [
     {
       title: '账号安全',
@@ -213,14 +212,6 @@ function settingsGroupsForRender() {
         { key: 'phone', name: '换绑手机号', icon: 'smartphone', hint: currentUser?.phone || '绑定新的安全手机号', action: 'phone' },
         { key: 'email', name: '换绑邮箱', icon: 'mail', hint: currentUser?.email || '绑定新的安全邮箱', action: 'email' },
         { key: 'devices', name: '登录设备管理', icon: 'monitor-smartphone', hint: `${currentSessions?.length || 0} 台活跃设备`, action: 'devices' }
-      ]
-    },
-    {
-      title: '偏好设置',
-      items: [
-        { key: 'privacy', name: '隐私设置', icon: 'shield-check', hint: `足迹：${settingLabels.privacyVisibility[s.privacyVisibility] || '仅自己可见'}`, action: 'privacy' },
-        { key: 'theme', name: '主题设置', icon: 'palette', hint: settingLabels.mapTheme[s.mapTheme] || '赛博深邃', action: 'theme' },
-        { key: 'language', name: '语言', icon: 'languages', hint: s.language === 'en-US' ? 'English' : '简体中文', action: 'language' }
       ]
     },
     {
