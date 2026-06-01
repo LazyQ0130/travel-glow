@@ -59,19 +59,37 @@ function showRequestError(error, fallbackMessage = '操作失败') {
 }
 
 const AUTH_PUBLIC_PATHS = new Set(['/auth/login', '/auth/login/email', '/auth/register', '/auth/email/send']);
+const REGISTER_PASSWORD_MESSAGE = '密码需至少 8 位，并且在大小写字母、数字、特殊符号中至少包含 3 类';
 
 function shouldHandleAuthExpired(path, response) {
   return response.status === 401 && !AUTH_PUBLIC_PATHS.has(path);
 }
 
 function getApiErrorMessage(path, data, fallbackMessage) {
-  const isEmailLoginCodeError = path === '/auth/login/email'
+  if (data.code === 'EMAIL_IN_USE') return '该邮箱已被其他账号绑定';
+  if (data.code === 'EMAIL_CODE_EXPIRED') return '验证码已过期，请重新获取';
+  if (data.code === 'WEAK_PASSWORD') return REGISTER_PASSWORD_MESSAGE;
+
+  const isEmailCodeError = (path === '/auth/login/email' || path === '/auth/register')
     && (
       data.code === 'EMAIL_CODE_INVALID'
       || (data.code === 'VALIDATION_ERROR' && data.details?.fieldErrors?.code)
     );
-  if (isEmailLoginCodeError) return '验证码输入有误~';
+  if (isEmailCodeError) return '验证码输入有误~';
   return data.message || fallbackMessage;
+}
+
+function getRegisterPasswordClassCount(password) {
+  return [
+    /[a-z]/.test(password),
+    /[A-Z]/.test(password),
+    /\d/.test(password),
+    /[^A-Za-z0-9]/.test(password)
+  ].filter(Boolean).length;
+}
+
+function isRegisterPasswordStrong(password) {
+  return String(password || '').length >= 8 && getRegisterPasswordClassCount(String(password || '')) >= 3;
 }
 
 function confirmAction(message, { title = '确认操作', danger = false } = {}) {
@@ -592,23 +610,64 @@ function openRegisterDrawer() {
           <input name="code" inputmode="numeric" required placeholder="邮箱验证码" class="rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50">
           <button type="button" class="send-register-code rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-sm text-[#06B6D4]">发送验证码</button>
         </div>
-        <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">密码</span><input name="password" type="password" minlength="6" required class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
-        <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">确认密码</span><input name="confirmPassword" type="password" minlength="6" required class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
+        <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">密码</span><input name="password" type="password" minlength="8" required class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
+        <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">确认密码</span><input name="confirmPassword" type="password" minlength="8" required class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
       </div>
       <button class="mt-5 w-full rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-4 font-semibold text-[#030712]" type="submit">注册</button>
       <button type="button" class="back-login mt-3 w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-sm text-[#9CA3AF]">返回登录</button>
     </form>
   `);
   const form = document.getElementById('register-form');
+  let submitting = false;
+  const submitButton = form.querySelector('button[type="submit"]');
+
   form.querySelector('.send-register-code').addEventListener('click', async (event) => {
-    await sendEmailCode(form.email.value.trim(), 'register', event.currentTarget);
+    try {
+      await sendEmailCode(form.email.value.trim(), 'register', event.currentTarget);
+    } catch (error) {
+      showRequestError(error, '验证码发送失败');
+    }
   });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (submitting) return;
+
     const body = Object.fromEntries(new FormData(form).entries());
-    if (body.password !== body.confirmPassword) throw new Error('两次输入的密码不一致');
-    delete body.confirmPassword;
-    await submitAuth('/auth/register', body);
+    const code = String(body.code || '').trim();
+    if (!/^\d{6}$/.test(code)) {
+      showToast('验证码输入有误~', 'warning');
+      form.code.focus();
+      return;
+    }
+    if (!isRegisterPasswordStrong(body.password)) {
+      showToast(REGISTER_PASSWORD_MESSAGE, 'warning');
+      form.password.focus();
+      return;
+    }
+    if (body.password !== body.confirmPassword) {
+      showToast('两次输入的密码不一致', 'warning');
+      form.confirmPassword.focus();
+      return;
+    }
+
+    submitting = true;
+    const originalText = submitButton.textContent;
+    submitButton.disabled = true;
+    submitButton.textContent = '注册中...';
+
+    try {
+      delete body.confirmPassword;
+      body.code = code;
+      await submitAuth('/auth/register', body);
+    } catch (error) {
+      showRequestError(error, '注册失败');
+    } finally {
+      submitting = false;
+      if (submitButton.isConnected) {
+        submitButton.disabled = false;
+        submitButton.textContent = originalText;
+      }
+    }
   });
   form.querySelector('.back-login').addEventListener('click', openLoginDrawer);
 }

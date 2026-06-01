@@ -110,6 +110,42 @@ test('registration rejects weak passwords before creating an account', async () 
   assert.equal(body.code, 'WEAK_PASSWORD');
 });
 
+test('registration rejects passwords with fewer than 3 character classes', async () => {
+  const response = await request('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      username: `class_${Date.now()}`,
+      nickname: 'Weak Classes',
+      email: `weak-class-${Date.now()}@travelglow.local`,
+      password: 'abcdefgh',
+      code: '000000'
+    })
+  });
+  const body = await json(response);
+  assert.equal(response.status, 400);
+  assert.equal(body.code, 'WEAK_PASSWORD');
+});
+
+test('registration rejects duplicate emails before verifying the code', async () => {
+  const taken = await createAuthUser('regtaken', 'Abcdef12', { email: `regtaken-${Date.now()}@travelglow.local` });
+
+  const response = await request('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      username: `dupe_${Date.now()}`,
+      nickname: 'Duplicate Email',
+      email: taken.user.email,
+      password: 'Abcdef12',
+      code: '000000'
+    })
+  });
+  const body = await json(response);
+  assert.equal(response.status, 409);
+  assert.equal(body.code, 'EMAIL_IN_USE');
+
+  await prisma.user.update({ where: { id: taken.user.id }, data: { deletedAt: new Date(), username: null, email: null } });
+});
+
 test('password login creates a server-validated session and logout revokes it', async () => {
   const loginResponse = await request('/auth/login', {
     method: 'POST',
@@ -284,7 +320,7 @@ test('password update can preserve or revoke other sessions', async () => {
 });
 
 test('registration requires a register email verification code', async () => {
-  const password = 'TravelGlow!2026';
+  const password = 'Abcdef12';
   const suffix = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
   const username = `reg_${suffix}`.slice(0, 24);
   const email = `reg-${suffix}@travelglow.local`;
@@ -314,6 +350,32 @@ test('registration requires a register email verification code', async () => {
   assert.match(registered.user.email, /\*/);
 
   await prisma.user.update({ where: { id: registered.user.id }, data: { deletedAt: new Date(), username: null, email: null } });
+});
+
+test('registration rejects an incorrect email verification code', async () => {
+  const suffix = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
+  const username = `wrong_${suffix}`.slice(0, 24);
+  const email = `wrong-${suffix}@travelglow.local`;
+
+  const codeResponse = await request('/auth/email/send', {
+    method: 'POST',
+    body: JSON.stringify({ email, purpose: 'register' })
+  });
+  assert.equal(codeResponse.status, 200);
+
+  const registerResponse = await request('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      username,
+      nickname: 'Wrong Code',
+      email,
+      password: 'Abcdef12',
+      code: '000000'
+    })
+  });
+  const body = await json(registerResponse);
+  assert.equal(registerResponse.status, 400);
+  assert.equal(body.code, 'EMAIL_CODE_INVALID');
 });
 
 test('email verification binds a new email and rejects duplicates', async () => {
