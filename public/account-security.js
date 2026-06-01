@@ -198,6 +198,23 @@ const AccountSecurity = (() => {
       `
     });
     const form = document.getElementById('profile-edit-form');
+    const avatarInput = form.avatar;
+    const avatarPreview = root()?.querySelector('img[alt]');
+    let previewAvatarUrl = '';
+    const revokePreviewAvatarUrl = () => {
+      if (previewAvatarUrl) {
+        URL.revokeObjectURL(previewAvatarUrl);
+        previewAvatarUrl = '';
+      }
+    };
+    avatarInput?.addEventListener('change', () => {
+      const avatarFile = avatarInput.files?.[0];
+      revokePreviewAvatarUrl();
+      if (!avatarFile || !avatarPreview) return;
+      previewAvatarUrl = URL.createObjectURL(avatarFile);
+      avatarPreview.src = previewAvatarUrl;
+    });
+    root()?.querySelector('.account-back')?.addEventListener('click', revokePreviewAvatarUrl);
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       await submitForm(form, async () => {
@@ -218,6 +235,7 @@ const AccountSecurity = (() => {
           })
         });
         await app().refreshAll();
+        revokePreviewAvatarUrl();
         app().showToast('资料已保存', 'success');
         openProfile();
       });

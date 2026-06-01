@@ -733,6 +733,26 @@ openEditProfileDrawer = function openProfileFormDrawer() {
     </form>
   `);
   const profileForm = document.getElementById('profile-form');
+  const avatarInput = profileForm.avatar;
+  const avatarPreview = avatarInput?.closest('div')?.querySelector('img');
+  let previewAvatarUrl = '';
+  const revokePreviewAvatarUrl = () => {
+    if (previewAvatarUrl) {
+      URL.revokeObjectURL(previewAvatarUrl);
+      previewAvatarUrl = '';
+    }
+  };
+  avatarInput?.addEventListener('change', () => {
+    const avatarFile = avatarInput.files?.[0];
+    revokePreviewAvatarUrl();
+    if (!avatarFile || !avatarPreview) return;
+    previewAvatarUrl = URL.createObjectURL(avatarFile);
+    avatarPreview.src = previewAvatarUrl;
+  });
+  profileForm.querySelectorAll('.drawer-close').forEach((button) => {
+    button.addEventListener('click', revokePreviewAvatarUrl);
+  });
+  document.getElementById('drawer-backdrop')?.addEventListener('click', revokePreviewAvatarUrl, { once: true });
   profileForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = event.target;
@@ -757,6 +777,7 @@ openEditProfileDrawer = function openProfileFormDrawer() {
     });
     await refreshAll();
     await loadAuthMe().catch(() => {});
+    revokePreviewAvatarUrl();
     showToast('资料已保存', 'success');
     closeDrawer();
   });
