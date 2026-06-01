@@ -500,6 +500,48 @@ test('checkins support pagination and soft delete', async () => {
   assert.equal(getDeletedResponse.status, 404);
 });
 
+test('checkin creation validates body fields and photo count', async () => {
+  const loginResponse = await request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ identifier: 'qyf', password: '123456' })
+  });
+  const login = await json(loginResponse);
+  const region = await prisma.region.findFirst({ where: { type: 'city' } });
+  assert.ok(region);
+
+  const invalidBodyForm = new FormData();
+  invalidBodyForm.set('regionId', region.id);
+  invalidBodyForm.set('checkinDate', 'not-a-date');
+  invalidBodyForm.set('title', 'x'.repeat(101));
+  invalidBodyForm.set('note', 'x'.repeat(501));
+
+  const invalidBodyResponse = await request('/checkins', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${login.token}` },
+    body: invalidBodyForm
+  });
+  const invalidBody = await json(invalidBodyResponse);
+  assert.equal(invalidBodyResponse.status, 400);
+  assert.equal(invalidBody.code, 'VALIDATION_ERROR');
+  assert.match(JSON.stringify(invalidBody.details.fieldErrors.checkinDate), /ISO date/);
+  assert.match(JSON.stringify(invalidBody.details.fieldErrors.title), /100 characters/);
+  assert.match(JSON.stringify(invalidBody.details.fieldErrors.note), /500 characters/);
+
+  const missingPhotosForm = new FormData();
+  missingPhotosForm.set('regionId', region.id);
+  missingPhotosForm.set('checkinDate', '2026-05-30');
+
+  const missingPhotosResponse = await request('/checkins', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${login.token}` },
+    body: missingPhotosForm
+  });
+  const missingPhotos = await json(missingPhotosResponse);
+  assert.equal(missingPhotosResponse.status, 400);
+  assert.equal(missingPhotos.code, 'VALIDATION_ERROR');
+  assert.match(JSON.stringify(missingPhotos.details.fieldErrors.photos), /at least one photo/);
+});
+
 test('photo upload rejects files with a mismatched image signature', async () => {
   const loginResponse = await request('/auth/login', {
     method: 'POST',

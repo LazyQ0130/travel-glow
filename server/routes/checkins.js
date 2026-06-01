@@ -1,12 +1,27 @@
 const express = require('express');
+const { z } = require('zod');
 const prisma = require('../db');
 const auth = require('../middleware/auth');
+const validate = require('../middleware/validate');
 const { uploadPhotos, uploadedPhotos, deleteLocalUpload, validateUploadedFiles } = require('../upload');
 const { AppError } = require('../errors');
 const { getPagination, hasPagination, paginated } = require('../pagination');
 const { activeWhere, activePhotosInclude } = require('../services/content-service');
 
 const router = express.Router();
+
+const createCheckinSchema = z.object({
+  regionId: z.string({ message: 'regionId is required.' }).trim().min(1, 'regionId is required.'),
+  checkinDate: z.iso.date({ message: 'checkinDate must be an ISO date in YYYY-MM-DD format.' }),
+  note: z.string().max(500, 'note must be 500 characters or fewer.').optional(),
+  title: z.string().max(100, 'title must be 100 characters or fewer.').optional()
+});
+
+const checkinPhotosSchema = z.object({
+  photos: z.array(z.any())
+    .min(1, 'Please upload at least one photo.')
+    .max(9, 'Please upload no more than 9 photos.')
+});
 
 function includeFullCheckin() {
   return {
@@ -15,16 +30,23 @@ function includeFullCheckin() {
   };
 }
 
-router.post('/', auth, uploadPhotos, async (req, res, next) => {
-  const files = uploadedPhotos(req);
+function validateCheckinPhotos(req, res, next) {
+  const result = checkinPhotosSchema.safeParse({ photos: uploadedPhotos(req) });
+  if (!result.success) {
+    return res.status(400).json({
+      message: 'Request validation failed.',
+      code: 'VALIDATION_ERROR',
+      details: result.error.flatten()
+    });
+  }
+  req.checkinPhotos = result.data.photos;
+  next();
+}
+
+router.post('/', auth, uploadPhotos, validate(createCheckinSchema), validateCheckinPhotos, async (req, res, next) => {
+  const files = req.checkinPhotos;
   try {
     const { regionId, checkinDate, note, title } = req.body;
-    if (!regionId || !checkinDate) {
-      throw new AppError(400, 'regionId and checkinDate are required.', 'VALIDATION_ERROR');
-    }
-    if (!files.length) {
-      throw new AppError(400, 'Please upload at least one photo.', 'UPLOAD_REQUIRED');
-    }
     await validateUploadedFiles(files);
 
     const region = await prisma.region.findUnique({ where: { id: regionId } });
