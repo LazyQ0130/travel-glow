@@ -186,6 +186,7 @@ async function loadAuthMe(options = {}) {
     level: currentUser.level || 1,
     exp: currentUser.exp || 0
   });
+  syncHomeProfile();
   return true;
 }
 
@@ -200,6 +201,7 @@ async function loadProfile(options = {}) {
     level: profile.level || 1,
     exp: profile.exp || 0
   });
+  syncHomeProfile();
 }
 
 async function loadOverviewStats(options = {}) {
@@ -739,7 +741,10 @@ openEditProfileDrawer = function openProfileFormDrawer() {
     if (avatarFile) {
       const avatarData = new FormData();
       avatarData.append('avatar', avatarFile);
-      await apiRequest('/user/avatar', { method: 'POST', body: avatarData, headers: {} });
+      const avatarResult = await apiRequest('/user/avatar', { method: 'POST', body: avatarData, headers: {} });
+      currentUser = avatarResult.user || currentUser;
+      userProfile.avatar = avatarResult.avatar || currentUser?.avatar || userProfile.avatar;
+      syncHomeProfile();
     }
     await apiRequest('/user/profile', {
       method: 'PUT',

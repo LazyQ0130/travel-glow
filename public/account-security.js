@@ -205,7 +205,10 @@ const AccountSecurity = (() => {
         if (avatarFile) {
           const avatarData = new FormData();
           avatarData.append('avatar', avatarFile);
-          await app().apiRequest('/user/avatar', { method: 'POST', body: avatarData, headers: {} });
+          const avatarResult = await app().apiRequest('/user/avatar', { method: 'POST', body: avatarData, headers: {} });
+          app().setUser(avatarResult.user || app().getUser());
+          userProfile.avatar = avatarResult.avatar || userProfile.avatar;
+          syncHomeProfile();
         }
         await app().apiRequest('/user/profile', {
           method: 'PUT',
