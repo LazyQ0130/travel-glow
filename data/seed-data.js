@@ -10,15 +10,7 @@ module.exports = {
     "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=240&q=80",
     "level": 6,
     "levelName": "旅光探索者",
-    "exp": 760,
-    "nextExp": 1000,
-    "joinDays": 128,
-    "nextLevelHint": "距离 Lv.7 还差 3 个城市",
-    "tags": [
-      "城市探索者",
-      "世界新手",
-      "影像记录者"
-    ]
+    "exp": 760
   },
   "chinaRegions": [
     {

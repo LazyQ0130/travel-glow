@@ -313,8 +313,6 @@ function renderLoggedInMePage() {
   if (!root) return;
   const stats = appStats || getOverviewStats();
   userStats = buildUserStats();
-  const progress = Math.min(100, Math.round(((currentUser.exp || 0) / userProfile.nextExp) * 100));
-  const joinDays = currentUser.createdAt ? Math.max(1, Math.ceil((Date.now() - new Date(currentUser.createdAt).getTime()) / 86400000)) : userProfile.joinDays;
 
   root.innerHTML = `
     <section class="relative overflow-hidden rounded-3xl border border-cyan-300/10 bg-[#111827]/60 p-5 shadow-[0_0_42px_rgba(6,182,212,.14)] backdrop-blur-md transition-all duration-300 ease-out hover:-translate-y-1 hover:scale-[1.01]">
@@ -335,19 +333,6 @@ function renderLoggedInMePage() {
         <button class="me-edit-profile grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-cyan-300/20 bg-cyan-400/10 text-[#06B6D4] transition-all duration-300 ease-out hover:-translate-y-1 hover:scale-105 hover:text-[#F9FAFB]" aria-label="编辑资料">
           <i data-lucide="pencil" class="h-4 w-4"></i>
         </button>
-      </div>
-      <div class="relative mt-5 flex flex-wrap gap-2">
-        ${userProfile.tags.map((tag) => `<span class="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-100">${tag}</span>`).join('')}
-        <span class="rounded-full border border-[#1F2937] bg-[#030712]/70 px-3 py-1 text-xs text-[#9CA3AF]">已加入 ${joinDays} 天</span>
-      </div>
-      <div class="relative mt-5">
-        <div class="mb-2 flex items-center justify-between text-xs">
-          <span class="text-[#9CA3AF]">等级经验 ${currentUser.exp || 0}/${userProfile.nextExp}</span>
-          <span class="text-[#06B6D4]">${userProfile.nextLevelHint}</span>
-        </div>
-        <div class="h-2.5 overflow-hidden rounded-full bg-slate-800">
-          <div class="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]" style="width:${progress}%"></div>
-        </div>
       </div>
     </section>
 
