@@ -8,7 +8,7 @@ const validate = require('../middleware/validate');
 const rateLimit = require('../middleware/rate-limit');
 const { writeAuditLog } = require('../audit');
 const { publicUser, ensureUserSettings, sessionMeta } = require('../user-utils');
-const { createEmailCode, verifyEmailCode, normalizeEmail } = require('../email-verification');
+const { createEmailCode, verifyEmailCode, normalizeEmail, isValidEmail } = require('../email-verification');
 const { config } = require('../config');
 const { AppError } = require('../errors');
 const { passwordIssues } = require('../security/password-policy');
@@ -18,16 +18,20 @@ const router = express.Router();
 
 const usernameSchema = z.string().trim().min(3).max(24).regex(/^[a-zA-Z0-9_]+$/);
 const passwordSchema = z.string().min(1).max(72);
+const emailAddressSchema = z.string()
+  .trim()
+  .transform(normalizeEmail)
+  .refine(isValidEmail, { message: 'Please enter a valid, publicly deliverable email address.' });
 
 const sendEmailSchema = z.object({
-  email: z.string().trim().email(),
+  email: emailAddressSchema,
   purpose: z.enum(['register', 'login']).default('login')
 });
 
 const registerSchema = z.object({
   username: usernameSchema,
   nickname: z.string().trim().min(1).max(30),
-  email: z.string().trim().email(),
+  email: emailAddressSchema,
   password: passwordSchema,
   code: z.string().trim().length(6)
 });
@@ -39,7 +43,7 @@ const loginSchema = z.object({
 }).refine((data) => data.identifier || data.email, { message: 'Identifier or email is required.' });
 
 const emailLoginSchema = z.object({
-  email: z.string().trim().email(),
+  email: emailAddressSchema,
   code: z.string().trim().length(6)
 });
 

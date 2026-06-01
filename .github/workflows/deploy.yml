@@ -4,33 +4,119 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  APP_URL: ${{ secrets.APP_URL }}
+  CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  JWT_SECRET: ${{ secrets.JWT_SECRET }}
+  SMTP_HOST: ${{ secrets.SMTP_HOST }}
+  SMTP_PORT: ${{ secrets.SMTP_PORT }}
+  SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
+  SMTP_USER: ${{ secrets.SMTP_USER }}
+  SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+  SMTP_FROM: ${{ secrets.SMTP_FROM }}
 
 jobs:
-  deploy-placeholder:
-    name: Deployment placeholder
+  validate-deploy-candidate:
+    name: Validate deploy candidate
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check required deployment secrets
+        shell: bash
+        run: |
+          missing=0
+          for name in APP_URL CORS_ORIGINS DATABASE_URL JWT_SECRET SMTP_HOST SMTP_USER SMTP_PASSWORD SMTP_FROM; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required repository secret: ${name}"
+              missing=1
+            fi
+          done
+
+          if [ -n "${JWT_SECRET:-}" ] && [ "${#JWT_SECRET}" -lt 32 ]; then
+            echo "::error::JWT_SECRET must be at least 32 characters"
+            missing=1
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            echo "Configure the missing secrets in GitHub repository settings before deploying."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install dependencies with retry
+        shell: bash
+        run: |
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 20000
+          npm config set fetch-retry-maxtimeout 120000
+          for attempt in 1 2 3; do
+            if npm ci; then
+              exit 0
+            fi
+            echo "::warning::npm ci failed on attempt ${attempt}; retrying..."
+            sleep $((attempt * 10))
+          done
+          echo "::error::npm ci failed after 3 attempts"
+          exit 1
 
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Validate deploy candidate
-        run: npm run check
+      - name: Validate app with disposable SQLite database
+        shell: bash
+        env:
+          NODE_ENV: development
+          DATABASE_URL: file:./deploy-check.db
+          JWT_SECRET: deploy-check-secret-change-not-used-in-production
+          EMAIL_PROVIDER: mock
+          EXPOSE_DEV_EMAIL_CODE: 'true'
+          LOG_LEVEL: silent
+          CORS_ORIGINS: http://localhost:3000
+        run: |
+          npx prisma migrate deploy
+          npm run prisma:seed
+          npx prisma validate
+          npm run check:syntax
+          npm test
+          npm run check:smoke
+
+      - name: Build Docker image
+        run: docker build --progress=plain -t travel-glow:${{ github.sha }} .
 
       - name: Deployment handoff
+        shell: bash
         run: |
-          echo "部署占位流程已完成校验。"
-          echo "接入真实基础设施后，请在此处配置镜像推送、服务器连接、迁移和服务重启步骤。"
-          echo "建议 secrets: REGISTRY_URL, DEPLOY_HOST, DEPLOY_USER, DEPLOY_KEY, DATABASE_URL, JWT_SECRET。"
+          echo "Deployment candidate validated."
+          echo "Docker image was built locally in Actions as travel-glow:${GITHUB_SHA}."
+          echo "Add registry push and server rollout steps here when production infrastructure is ready."
+
+      - name: Failure diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          echo "Node: $(node --version 2>/dev/null || true)"
+          echo "npm: $(npm --version 2>/dev/null || true)"
+          npm config get registry 2>/dev/null || true
+          npx prisma --version 2>/dev/null || true
+          docker --version || true
+          docker system df || true
+          if [ -d "$HOME/.npm/_logs" ]; then
+            echo "npm debug logs:"
+            ls -la "$HOME/.npm/_logs"
+            tail -n 120 "$HOME"/.npm/_logs/* || true
+          fi

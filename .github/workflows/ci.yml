@@ -8,10 +8,23 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  DATABASE_URL: file:./ci.db
+  JWT_SECRET: ci-only-secret-change-not-used-in-production
+  EMAIL_PROVIDER: mock
+  EXPOSE_DEV_EMAIL_CODE: 'true'
+  LOG_LEVEL: silent
+  CORS_ORIGINS: http://localhost:3000
 
 jobs:
   check:
-    name: Check and test
+    name: Check, test, and build
     runs-on: ubuntu-latest
 
     steps:
@@ -21,20 +34,68 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Preflight repository files
+        shell: bash
+        run: |
+          test -f package.json || { echo "::error::package.json is missing"; exit 1; }
+          test -f package-lock.json || { echo "::error::package-lock.json is missing; npm ci cannot run"; exit 1; }
+          test -f prisma/schema.prisma || { echo "::error::Prisma schema is missing"; exit 1; }
+
+      - name: Install dependencies with retry
+        shell: bash
+        run: |
+          npm config set fetch-retries 5
+          npm config set fetch-retry-mintimeout 20000
+          npm config set fetch-retry-maxtimeout 120000
+          for attempt in 1 2 3; do
+            if npm ci; then
+              exit 0
+            fi
+            echo "::warning::npm ci failed on attempt ${attempt}; retrying..."
+            sleep $((attempt * 10))
+          done
+          echo "::error::npm ci failed after 3 attempts"
+          exit 1
 
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Run project checks
-        run: npm run check
+      - name: Prepare CI database
+        shell: bash
+        run: |
+          npx prisma migrate deploy
+          npm run prisma:seed
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Run syntax checks
+        run: npm run check:syntax
 
       - name: Run test suite
-        run: npm run test
+        run: npm test
+
+      - name: Run smoke test
+        run: npm run check:smoke
 
       - name: Build Docker image
-        run: docker build -t travel-glow:ci .
+        run: docker build --progress=plain -t travel-glow:ci .
+
+      - name: Failure diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          echo "Node: $(node --version)"
+          echo "npm: $(npm --version)"
+          npm config get registry
+          npx prisma --version || true
+          docker --version || true
+          docker system df || true
+          if [ -d "$HOME/.npm/_logs" ]; then
+            echo "npm debug logs:"
+            ls -la "$HOME/.npm/_logs"
+            tail -n 120 "$HOME"/.npm/_logs/* || true
+          fi

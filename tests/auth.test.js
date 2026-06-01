@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const bcrypt = require('bcryptjs');
 
 process.env.LOG_LEVEL = process.env.LOG_LEVEL || 'silent';
+process.env.EMAIL_PROVIDER = 'mock';
 process.env.EXPOSE_DEV_EMAIL_CODE = 'true';
 
 const app = require('../server/app');
@@ -100,7 +101,7 @@ test('registration rejects weak passwords before creating an account', async () 
     body: JSON.stringify({
       username: `weak_${Date.now()}`,
       nickname: 'Weak Password',
-      email: `weak-${Date.now()}@travelglow.local`,
+      email: `weak-${Date.now()}@example.com`,
       password: '123456',
       code: '000000'
     })
@@ -116,7 +117,7 @@ test('registration rejects passwords with fewer than 3 character classes', async
     body: JSON.stringify({
       username: `class_${Date.now()}`,
       nickname: 'Weak Classes',
-      email: `weak-class-${Date.now()}@travelglow.local`,
+      email: `weak-class-${Date.now()}@example.com`,
       password: 'abcdefgh',
       code: '000000'
     })
@@ -127,7 +128,7 @@ test('registration rejects passwords with fewer than 3 character classes', async
 });
 
 test('registration rejects duplicate emails before verifying the code', async () => {
-  const taken = await createAuthUser('regtaken', 'Abcdef12', { email: `regtaken-${Date.now()}@travelglow.local` });
+  const taken = await createAuthUser('regtaken', 'Abcdef12', { email: `regtaken-${Date.now()}@example.com` });
 
   const response = await request('/auth/register', {
     method: 'POST',
@@ -192,6 +193,24 @@ test('mock email verification supports email login in development', async () => 
   const login = await json(loginResponse);
   assert.equal(loginResponse.status, 200);
   assert.ok(login.token);
+});
+
+test('email code sending rejects local-only recipient domains', async () => {
+  const email = `new-${Date.now()}@travelglow.local`;
+  const before = await prisma.emailVerificationCode.count({ where: { email } });
+
+  const response = await request('/auth/email/send', {
+    method: 'POST',
+    body: JSON.stringify({ email, purpose: 'register' })
+  });
+  const body = await json(response);
+
+  assert.equal(response.status, 400);
+  assert.equal(body.code, 'VALIDATION_ERROR');
+  assert.match(JSON.stringify(body.details), /publicly deliverable email address/);
+
+  const after = await prisma.emailVerificationCode.count({ where: { email } });
+  assert.equal(after, before);
 });
 
 test('password login locks an account after repeated failures', async () => {
@@ -323,7 +342,7 @@ test('registration requires a register email verification code', async () => {
   const password = 'Abcdef12';
   const suffix = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
   const username = `reg_${suffix}`.slice(0, 24);
-  const email = `reg-${suffix}@travelglow.local`;
+  const email = `reg-${suffix}@example.com`;
 
   const codeResponse = await request('/auth/email/send', {
     method: 'POST',
@@ -355,7 +374,7 @@ test('registration requires a register email verification code', async () => {
 test('registration rejects an incorrect email verification code', async () => {
   const suffix = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
   const username = `wrong_${suffix}`.slice(0, 24);
-  const email = `wrong-${suffix}@travelglow.local`;
+  const email = `wrong-${suffix}@example.com`;
 
   const codeResponse = await request('/auth/email/send', {
     method: 'POST',
@@ -381,9 +400,9 @@ test('registration rejects an incorrect email verification code', async () => {
 test('email verification binds a new email and rejects duplicates', async () => {
   const password = 'TravelGlow!2026';
   const { user, username } = await createAuthUser('emailbind', password);
-  const taken = await createAuthUser('emailtaken', password, { email: `taken-${Date.now()}@travelglow.local` });
+  const taken = await createAuthUser('emailtaken', password, { email: `taken-${Date.now()}@example.com` });
   const login = await loginAs(username, password);
-  const nextEmail = `new-${Date.now()}@travelglow.local`;
+  const nextEmail = `new-${Date.now()}@example.com`;
 
   const duplicateCodeResponse = await request('/user/email/code', {
     method: 'POST',

@@ -11,7 +11,7 @@ const { writeAuditLog } = require('../audit');
 const { uploadAvatar, uploadDir, deleteLocalUpload, validateUploadedFiles } = require('../upload');
 const { publicUser, ensureUserSettings } = require('../user-utils');
 const { buildStats } = require('./stats');
-const { createEmailCode, verifyEmailCode, normalizeEmail } = require('../email-verification');
+const { createEmailCode, verifyEmailCode, normalizeEmail, isValidEmail } = require('../email-verification');
 const { AppError } = require('../errors');
 const { passwordIssues } = require('../security/password-policy');
 const { activeWhere, activePhotosInclude } = require('../services/content-service');
@@ -20,12 +20,16 @@ const router = express.Router();
 
 const writeLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 60, keyPrefix: 'user-write' });
 const sensitiveLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, keyPrefix: 'user-sensitive' });
+const emailAddressSchema = z.string()
+  .trim()
+  .transform(normalizeEmail)
+  .refine(isValidEmail, { message: 'Please enter a valid, publicly deliverable email address.' });
 
 const profileSchema = z.object({
   username: z.string().trim().min(3).max(24).regex(/^[a-zA-Z0-9_]+$/).optional(),
   nickname: z.string().trim().min(1).max(30).optional(),
   bio: z.string().trim().max(160).optional(),
-  email: z.union([z.literal(''), z.string().trim().email()]).optional()
+  email: z.union([z.literal(''), emailAddressSchema]).optional()
 });
 
 const passwordSchema = z.object({
@@ -39,12 +43,12 @@ const verifyPasswordSchema = z.object({
 });
 
 const emailCodeSchema = z.object({
-  email: z.string().trim().email()
+  email: emailAddressSchema
 });
 
 const emailSchema = z.object({
   password: z.string().min(1),
-  email: z.string().trim().email(),
+  email: emailAddressSchema,
   code: z.string().trim().length(6)
 });
 

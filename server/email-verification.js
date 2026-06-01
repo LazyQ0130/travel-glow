@@ -2,18 +2,52 @@ const bcrypt = require('bcryptjs');
 const prisma = require('./db');
 const { config } = require('./config');
 const { AppError } = require('./errors');
+const { logger } = require('./logger');
 const smtpProvider = require('./email-providers/smtp');
 
 const CODE_TTL_MINUTES = 5;
 const SEND_COOLDOWN_SECONDS = 60;
 const MAX_ATTEMPTS = 5;
+const NON_DELIVERABLE_TLDS = new Set(['local', 'localhost', 'invalid', 'test']);
 
 function normalizeEmail(email = '') {
   return String(email).trim().toLowerCase();
 }
 
 function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(email));
+  const normalized = normalizeEmail(email);
+  if (!normalized || normalized.length > 254) return false;
+  if (!/^[\x21-\x7e]+$/.test(normalized)) return false;
+
+  const parts = normalized.split('@');
+  if (parts.length !== 2) return false;
+
+  const [localPart, domain] = parts;
+  if (!localPart || !domain || localPart.length > 64 || domain.length > 253) return false;
+  if (localPart.startsWith('.') || localPart.endsWith('.') || localPart.includes('..')) return false;
+
+  const labels = domain.split('.');
+  if (labels.length < 2) return false;
+
+  for (const label of labels) {
+    if (!label || label.length > 63) return false;
+    if (!/^[a-z0-9-]+$/.test(label)) return false;
+    if (label.startsWith('-') || label.endsWith('-')) return false;
+  }
+
+  const tld = labels[labels.length - 1];
+  // `.local`, `.test`, and similar internal-only domains can pass loose email
+  // regexes but cannot receive public SMTP mail, which caused the bounce.
+  if (NON_DELIVERABLE_TLDS.has(tld)) return false;
+  if (!/^[a-z]{2,63}$/.test(tld)) return false;
+
+  return true;
+}
+
+function assertValidEmail(email) {
+  if (!isValidEmail(email)) {
+    throw new AppError(400, 'Please enter a valid, publicly deliverable email address.', 'INVALID_EMAIL');
+  }
 }
 
 function createCode() {
@@ -21,13 +55,21 @@ function createCode() {
 }
 
 async function sendEmailCode({ email, code, purpose }) {
+  const normalized = normalizeEmail(email);
+  assertValidEmail(normalized);
+
+  logger.info(
+    { to: normalized, purpose, provider: config.emailProvider },
+    'Sending email verification code.'
+  );
+
   if (config.emailProvider === 'mock') {
     return { provider: 'mock' };
   }
 
   try {
     await smtpProvider.sendMail({
-      to: email,
+      to: normalized,
       subject: 'Travel Glow verification code',
       text: [
         `Your Travel Glow verification code is: ${code}`,
@@ -52,9 +94,7 @@ async function sendEmailCode({ email, code, purpose }) {
 
 async function createEmailCode({ email, purpose, userId = null, ipAddress = '' }) {
   const normalized = normalizeEmail(email);
-  if (!isValidEmail(normalized)) {
-    throw new AppError(400, 'Please enter a valid email address.', 'INVALID_EMAIL');
-  }
+  assertValidEmail(normalized);
 
   const recent = await prisma.emailVerificationCode.findFirst({
     where: {
@@ -91,6 +131,7 @@ async function createEmailCode({ email, purpose, userId = null, ipAddress = '' }
 
 async function verifyEmailCode({ email, purpose, code }) {
   const normalized = normalizeEmail(email);
+  assertValidEmail(normalized);
   const record = await prisma.emailVerificationCode.findFirst({
     where: {
       email: normalized,
@@ -122,4 +163,4 @@ async function verifyEmailCode({ email, purpose, code }) {
   return normalized;
 }
 
-module.exports = { normalizeEmail, isValidEmail, createEmailCode, verifyEmailCode, sendEmailCode };
+module.exports = { normalizeEmail, isValidEmail, assertValidEmail, createEmailCode, verifyEmailCode, sendEmailCode };

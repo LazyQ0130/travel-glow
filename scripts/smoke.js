@@ -33,7 +33,7 @@ async function request(baseUrl, path, options = {}) {
     await request(baseUrl, '/health');
     const login = await request(baseUrl, '/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ identifier: 'demo', password: '123456' })
+      body: JSON.stringify({ identifier: 'qyf', password: '123456' })
     });
     await request(baseUrl, '/auth/me', {
       headers: { Authorization: `Bearer ${login.token}` }
