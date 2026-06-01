@@ -26,6 +26,10 @@ SMTP_TIMEOUT_MS=10000
 EXPOSE_DEV_EMAIL_CODE=false
 
 LOG_LEVEL=info
+LOG_DIR=./logs
+LOG_FILE=app.log
+LOG_MAX_SIZE=10m
+LOG_MAX_FILES=30
 RUN_MIGRATIONS_ON_START=true
 ```
 
@@ -84,3 +88,24 @@ RUN_MIGRATIONS_ON_START=false
 7. Configure HTTPS certificate and renewal.
 8. Configure PM2 or container orchestration restart policy and log collection.
 9. Configure firewall rules and expose only required ports.
+
+## Logging
+
+Application logs are written to `LOG_DIR` and ignored by Git. By default the app
+uses `./logs/app.log` in development and date-split files such as
+`./logs/app-20260601.log` in production. `LOG_MAX_SIZE` controls size rotation;
+for example, when `10m` is exceeded the app continues in files such as
+`app-20260601.1.log`.
+
+Development logs are also printed to the console in a colored readable format.
+Production logs are JSON files only, with no console output.
+
+Use the cleanup script to review old logs before deleting anything:
+
+```sh
+npm run logs:cleanup
+node scripts/cleanup-logs.js --apply
+```
+
+The cleanup script keeps 30 days by default. Set `LOG_RETENTION_DAYS` or pass
+`--days=30` to override it.

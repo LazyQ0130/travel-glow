@@ -27,6 +27,7 @@ function booleanFromEnv(name, fallback) {
 }
 
 const emailProvider = String(process.env.EMAIL_PROVIDER || 'mock').trim().toLowerCase();
+const isProduction = process.env.NODE_ENV === 'production';
 
 const config = {
   appName: 'travel-glow',
@@ -39,6 +40,10 @@ const config = {
   corsOrigins: csv(process.env.CORS_ORIGINS),
   trustProxy: booleanFromEnv('TRUST_PROXY', false),
   logLevel: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
+  logDir: process.env.LOG_DIR || './logs',
+  logFile: process.env.LOG_FILE || 'app.log',
+  logMaxSize: process.env.LOG_MAX_SIZE || '10m',
+  logRetentionDays: numberFromEnv('LOG_RETENTION_DAYS', numberFromEnv('LOG_MAX_FILES', isProduction ? 30 : 7)),
   emailProvider,
   exposeDevEmailCode: booleanFromEnv('EXPOSE_DEV_EMAIL_CODE', false),
   smtp: {
@@ -50,7 +55,7 @@ const config = {
     from: process.env.SMTP_FROM || process.env.SMTP_USER || '',
     timeoutMs: numberFromEnv('SMTP_TIMEOUT_MS', 10000)
   },
-  isProduction: process.env.NODE_ENV === 'production'
+  isProduction
 };
 
 function assertRuntimeConfig() {
@@ -72,6 +77,10 @@ function assertRuntimeConfig() {
 
   if (config.isProduction && config.corsOrigins.length === 0) {
     throw new Error('CORS_ORIGINS must include the production frontend origin.');
+  }
+
+  if (!Number.isInteger(config.logRetentionDays) || config.logRetentionDays < 1) {
+    throw new Error('LOG_RETENTION_DAYS or LOG_MAX_FILES must be a positive integer.');
   }
 
   if (!['smtp', 'mock'].includes(config.emailProvider)) {
