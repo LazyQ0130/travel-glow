@@ -52,6 +52,28 @@ function showToast(message, tone = 'info') {
   }, 2600);
 }
 
+function showRequestError(error, fallbackMessage = '操作失败') {
+  if (error?.toastShown) return;
+  showToast(error?.message || fallbackMessage, 'error');
+  if (error) error.toastShown = true;
+}
+
+const AUTH_PUBLIC_PATHS = new Set(['/auth/login', '/auth/login/email', '/auth/register', '/auth/email/send']);
+
+function shouldHandleAuthExpired(path, response) {
+  return response.status === 401 && !AUTH_PUBLIC_PATHS.has(path);
+}
+
+function getApiErrorMessage(path, data, fallbackMessage) {
+  const isEmailLoginCodeError = path === '/auth/login/email'
+    && (
+      data.code === 'EMAIL_CODE_INVALID'
+      || (data.code === 'VALIDATION_ERROR' && data.details?.fieldErrors?.code)
+    );
+  if (isEmailLoginCodeError) return '验证码输入有误~';
+  return data.message || fallbackMessage;
+}
+
 function confirmAction(message, { title = '确认操作', danger = false } = {}) {
   return new Promise((resolve) => {
     openDrawer(`
@@ -101,27 +123,30 @@ async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
   const data = await response.json().catch(() => ({}));
   const buildApiError = (fallbackMessage) => {
-    const error = new Error(data.message || fallbackMessage);
+    const error = new Error(getApiErrorMessage(path, data, fallbackMessage));
     error.status = response.status;
     error.code = data.code;
     error.details = data.details;
     error.retryAfterSeconds = Number(response.headers.get('Retry-After') || data.details?.retryAfterSeconds || 0);
     return error;
   };
-  if (response.status === 401) {
+  if (shouldHandleAuthExpired(path, response)) {
+    const error = buildApiError('登录状态已失效，请重新登录');
     clearToken();
     currentUser = null;
     currentSettings = null;
     currentSessions = [];
     renderLoginRequiredApp();
     setTab('me');
-    showToast(data.message || '登录状态已失效，请重新登录', 'warning');
+    showToast(error.message, 'warning');
+    error.toastShown = true;
     openLoginDrawer();
-    throw new Error(data.message || '请重新登录');
+    throw error;
   }
   if (!response.ok) {
     const error = buildApiError('Request failed');
     showToast(error.message, 'error');
+    error.toastShown = true;
     throw error;
   }
   return data;
@@ -480,6 +505,23 @@ function openLoginDrawer() {
   `);
   const form = document.getElementById('login-form');
   let mode = 'password';
+  let submitting = false;
+  const submitButton = form.querySelector('button[type="submit"]');
+  const passwordFields = form.querySelector('#password-login-fields');
+  const emailFields = form.querySelector('#email-login-fields');
+  const syncLoginMode = () => {
+    const isEmailMode = mode === 'email';
+    passwordFields.classList.toggle('hidden', isEmailMode);
+    emailFields.classList.toggle('hidden', !isEmailMode);
+    passwordFields.querySelectorAll('input').forEach((input) => {
+      input.required = !isEmailMode;
+      input.disabled = isEmailMode;
+    });
+    emailFields.querySelectorAll('input').forEach((input) => {
+      input.required = isEmailMode;
+      input.disabled = !isEmailMode;
+    });
+  };
   form.querySelectorAll('.login-mode').forEach((button) => {
     button.addEventListener('click', () => {
       mode = button.dataset.mode;
@@ -489,20 +531,48 @@ function openLoginDrawer() {
         item.classList.toggle('text-[#06B6D4]', active);
         item.classList.toggle('text-[#9CA3AF]', !active);
       });
-      form.querySelector('#password-login-fields').classList.toggle('hidden', mode !== 'password');
-      form.querySelector('#email-login-fields').classList.toggle('hidden', mode !== 'email');
+      syncLoginMode();
     });
   });
+  syncLoginMode();
   form.querySelector('.send-login-code').addEventListener('click', async (event) => {
-    await sendEmailCode(form.email.value.trim(), 'login', event.currentTarget);
+    try {
+      await sendEmailCode(form.email.value.trim(), 'login', event.currentTarget);
+    } catch (error) {
+      showRequestError(error, '验证码发送失败');
+    }
   });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (mode === 'email') {
-      await submitAuth('/auth/login/email', { email: form.email.value.trim(), code: form.code.value.trim() });
-      return;
+    if (submitting) return;
+
+    submitting = true;
+    const originalText = submitButton.textContent;
+    submitButton.disabled = true;
+    submitButton.textContent = '登录中...';
+
+    try {
+      if (mode === 'email') {
+        const email = form.email.value.trim();
+        const code = form.code.value.trim();
+        if (!/^\d{6}$/.test(code)) {
+          showToast('验证码输入有误~', 'error');
+          form.code.focus();
+          return;
+        }
+        await submitAuth('/auth/login/email', { email, code });
+        return;
+      }
+      await submitAuth('/auth/login', { identifier: form.identifier.value.trim(), password: form.password.value });
+    } catch (error) {
+      showRequestError(error, '登录失败');
+    } finally {
+      submitting = false;
+      if (submitButton.isConnected) {
+        submitButton.disabled = false;
+        submitButton.textContent = originalText;
+      }
     }
-    await submitAuth('/auth/login', { identifier: form.identifier.value.trim(), password: form.password.value });
   });
   form.querySelector('.open-register').addEventListener('click', openRegisterDrawer);
 }
