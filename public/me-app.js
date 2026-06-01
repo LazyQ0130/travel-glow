@@ -133,12 +133,13 @@ function clearToken() {
 
 async function apiRequest(path, options = {}) {
   // 通用 API 请求封装：自动带 JWT，自动处理 JSON，401 时回到未登录态。
-  const headers = { ...(options.headers || {}) };
-  const isForm = options.body instanceof FormData;
+  const { suppressErrorToast = false, ...requestOptions } = options;
+  const headers = { ...(requestOptions.headers || {}) };
+  const isForm = requestOptions.body instanceof FormData;
   if (!isForm) headers['Content-Type'] = headers['Content-Type'] || 'application/json';
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
 
-  const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const response = await fetch(`${API_BASE}${path}`, { ...requestOptions, headers });
   const data = await response.json().catch(() => ({}));
   const buildApiError = (fallbackMessage) => {
     const error = new Error(getApiErrorMessage(path, data, fallbackMessage));
@@ -163,16 +164,18 @@ async function apiRequest(path, options = {}) {
   }
   if (!response.ok) {
     const error = buildApiError('Request failed');
-    showToast(error.message, 'error');
-    error.toastShown = true;
+    if (!suppressErrorToast) {
+      showToast(error.message, 'error');
+      error.toastShown = true;
+    }
     throw error;
   }
   return data;
 }
 
-async function loadAuthMe() {
+async function loadAuthMe(options = {}) {
   if (!authToken) return false;
-  const data = await apiRequest('/auth/me');
+  const data = await apiRequest('/auth/me', options);
   currentUser = data.user;
   currentSettings = data.settings;
   currentSessions = data.sessions || [];
@@ -186,8 +189,8 @@ async function loadAuthMe() {
   return true;
 }
 
-async function loadProfile() {
-  const profile = await apiRequest('/user/profile');
+async function loadProfile(options = {}) {
+  const profile = await apiRequest('/user/profile', options);
   currentUser = profile;
   currentSettings = profile.settings;
   Object.assign(userProfile, {
@@ -199,12 +202,12 @@ async function loadProfile() {
   });
 }
 
-async function loadOverviewStats() {
-  appStats = await apiRequest('/stats/overview');
+async function loadOverviewStats(options = {}) {
+  appStats = await apiRequest('/stats/overview', options);
 }
 
-async function loadChinaRegions() {
-  const regions = await apiRequest('/regions/china/provinces');
+async function loadChinaRegions(options = {}) {
+  const regions = await apiRequest('/regions/china/provinces', options);
   chinaRegions.splice(0, chinaRegions.length, ...regions.map((region) => ({
     ...region,
     short: region.short || region.shortName,
@@ -213,11 +216,11 @@ async function loadChinaRegions() {
     photoCount: region.photoCount || 0,
     totalCities: region.totalCities || (provinceCityCatalog[region.id] || []).length
   })));
-  appChinaLit = await apiRequest('/map/china/lit-regions');
+  appChinaLit = await apiRequest('/map/china/lit-regions', options);
 }
 
-async function loadWorldRegions() {
-  const groups = await apiRequest('/regions/continents');
+async function loadWorldRegions(options = {}) {
+  const groups = await apiRequest('/regions/continents', options);
   worldRegions.splice(0, worldRegions.length, ...groups.map((group) => ({
     continent: group.continent || group.name,
     code: group.code,
@@ -229,23 +232,30 @@ async function loadWorldRegions() {
       date: country.date || ''
     }))
   })));
-  appWorldLit = await apiRequest('/map/world/lit-regions');
+  appWorldLit = await apiRequest('/map/world/lit-regions', options);
 }
 
-async function loadPhotos() {
-  appPhotos = await apiRequest('/photos');
+async function loadPhotos(options = {}) {
+  appPhotos = await apiRequest('/photos', options);
 }
 
-async function loadCheckins() {
-  appCheckins = await apiRequest('/checkins');
+async function loadCheckins(options = {}) {
+  appCheckins = await apiRequest('/checkins', options);
 }
 
-async function refreshAll() {
+async function refreshAll(options = {}) {
   if (!currentUser) {
     renderMePage();
     return;
   }
-  await Promise.all([loadProfile(), loadOverviewStats(), loadChinaRegions(), loadWorldRegions(), loadPhotos(), loadCheckins()]);
+  await Promise.all([
+    loadProfile(options),
+    loadOverviewStats(options),
+    loadChinaRegions(options),
+    loadWorldRegions(options),
+    loadPhotos(options),
+    loadCheckins(options)
+  ]);
   renderDerivedStats();
   renderChinaMap();
   renderWorldMap();
@@ -287,7 +297,7 @@ function renderLoggedOutMePage() {
         <p class="mt-2 text-sm leading-6 text-[#9CA3AF]">登录后同步你的足迹、照片和设置，刷新页面后仍然保留。</p>
         <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <button class="login-entry rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-4 py-3 font-semibold text-[#030712]">登录</button>
-          <button class="register-entry rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-[#06B6D4]">注册</button>
+          <button class="register-entry rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-[#06B6D4]">注册并登录</button>
         </div>
       </div>
     </section>
@@ -409,7 +419,7 @@ function renderLoginRequiredPage(pageId, title, description, icon = 'lock-keyhol
         <p class="mt-3 text-sm leading-6 text-[#9CA3AF]">${escapeHtml(description)}</p>
         <div class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <button class="login-required-login rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-4 font-semibold text-[#030712]" type="button">登录</button>
-          <button class="login-required-register rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-5 py-4 font-semibold text-[#06B6D4]" type="button">注册</button>
+          <button class="login-required-register rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-5 py-4 font-semibold text-[#06B6D4]" type="button">注册并登录</button>
         </div>
       </div>
     </section>
@@ -432,12 +442,22 @@ function renderLoginRequiredApp() {
   createIcons();
 }
 
-async function submitAuth(path, body) {
+async function submitAuth(path, body, {
+  successMessage = '登录状态已保存',
+  refreshFailureMessage = '已登录，但页面数据刷新失败，请刷新页面重试'
+} = {}) {
   const result = await apiRequest(path, { method: 'POST', body: JSON.stringify(body) });
   saveToken(result.token);
-  await loadAuthenticatedApp();
-  closeDrawer();
-  showToast('登录状态已保存', 'success');
+  try {
+    await loadAuthenticatedApp({ suppressErrorToast: true });
+    closeDrawer();
+    showToast(successMessage, 'success');
+  } catch (error) {
+    console.error(error);
+    closeDrawer();
+    showToast(refreshFailureMessage, 'warning');
+  }
+  return result;
 }
 
 function startButtonCooldown(button, originalText, seconds = 60) {
@@ -517,7 +537,7 @@ function openLoginDrawer() {
       </div>
       <button class="mt-5 w-full rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-4 font-semibold text-[#030712]" type="submit">登录</button>
       <div class="mt-3">
-        <button type="button" class="open-register w-full rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-sm text-[#06B6D4]">注册账号</button>
+        <button type="button" class="open-register w-full rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-sm text-[#06B6D4]">注册并登录</button>
       </div>
     </form>
   `);
@@ -599,7 +619,7 @@ function openRegisterDrawer() {
   openDrawer(`
     <form id="register-form">
       <div class="flex items-start justify-between gap-4">
-        <div><p class="text-sm text-[#06B6D4]">Create Account</p><h2 class="mt-1 text-2xl font-semibold text-[#F9FAFB]">注册旅光账号</h2></div>
+        <div><p class="text-sm text-[#06B6D4]">Create Account</p><h2 class="mt-1 text-2xl font-semibold text-[#F9FAFB]">注册并登录旅光账号</h2></div>
         <button type="button" class="drawer-close rounded-full border border-[#1F2937] bg-[#030712]/70 p-2 text-[#9CA3AF]"><i data-lucide="x" class="h-5 w-5"></i></button>
       </div>
       <div class="mt-5 space-y-3">
@@ -613,7 +633,7 @@ function openRegisterDrawer() {
         <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">密码</span><input name="password" type="password" minlength="8" required class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
         <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">确认密码</span><input name="confirmPassword" type="password" minlength="8" required class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
       </div>
-      <button class="mt-5 w-full rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-4 font-semibold text-[#030712]" type="submit">注册</button>
+      <button class="mt-5 w-full rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-4 font-semibold text-[#030712]" type="submit">注册并登录</button>
       <button type="button" class="back-login mt-3 w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-sm text-[#9CA3AF]">返回登录</button>
     </form>
   `);
@@ -653,12 +673,15 @@ function openRegisterDrawer() {
     submitting = true;
     const originalText = submitButton.textContent;
     submitButton.disabled = true;
-    submitButton.textContent = '注册中...';
+    submitButton.textContent = '注册并登录中...';
 
     try {
       delete body.confirmPassword;
       body.code = code;
-      await submitAuth('/auth/register', body);
+      await submitAuth('/auth/register', body, {
+        successMessage: '注册并登录成功',
+        refreshFailureMessage: '账号已注册并登录，但页面数据刷新失败，请刷新页面重试'
+      });
     } catch (error) {
       showRequestError(error, '注册失败');
     } finally {
@@ -870,17 +893,12 @@ openAddDrawer = function guardedAddDrawer() {
 
 const originalSetTab = setTab;
 setTab = function guardedSetTab(tab, options = {}) {
-  if (!currentUser && tab !== 'me') {
-    originalSetTab('me', options);
-    openLoginDrawer();
-    return;
-  }
   originalSetTab(tab, options);
 };
 
-async function loadAuthenticatedApp() {
-  await loadAuthMe();
-  await refreshAll();
+async function loadAuthenticatedApp(options = {}) {
+  await loadAuthMe(options);
+  await refreshAll(options);
   bindAuthenticatedControls();
 }
 
@@ -922,8 +940,7 @@ async function initPersonalCenter() {
   }
   if (!currentUser) {
     renderLoginRequiredApp();
-    setTab('me');
-    openLoginDrawer();
+    setTab('home');
   } else {
     setTab(currentSettings?.defaultHomeTab || 'home');
   }
