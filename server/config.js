@@ -55,6 +55,17 @@ const config = {
     from: process.env.SMTP_FROM || process.env.SMTP_USER || '',
     timeoutMs: numberFromEnv('SMTP_TIMEOUT_MS', 10000)
   },
+  redis: {
+    enabled: booleanFromEnv('RATE_LIMIT_REDIS_ENABLED', Boolean(process.env.REDIS_HOST || isProduction)),
+    host: process.env.REDIS_HOST || '127.0.0.1',
+    port: numberFromEnv('REDIS_PORT', 6379),
+    password: process.env.REDIS_PASSWORD || '',
+    db: numberFromEnv('REDIS_DB', 0),
+    poolSize: numberFromEnv('REDIS_POOL_SIZE', isProduction ? 4 : 2),
+    connectTimeoutMs: numberFromEnv('REDIS_CONNECT_TIMEOUT_MS', 1000),
+    commandTimeoutMs: numberFromEnv('REDIS_COMMAND_TIMEOUT_MS', 500),
+    failureCooldownMs: numberFromEnv('REDIS_FAILURE_COOLDOWN_MS', 30000)
+  },
   isProduction
 };
 
@@ -111,6 +122,36 @@ function assertRuntimeConfig() {
       if (!value) {
         throw new Error(`${name} must be set when EMAIL_PROVIDER=smtp.`);
       }
+    }
+  }
+
+  if (config.redis.enabled) {
+    if (!config.redis.host) {
+      throw new Error('REDIS_HOST must be set when RATE_LIMIT_REDIS_ENABLED=true.');
+    }
+
+    if (!Number.isInteger(config.redis.port) || config.redis.port < 1 || config.redis.port > 65535) {
+      throw new Error('REDIS_PORT must be an integer between 1 and 65535.');
+    }
+
+    if (!Number.isInteger(config.redis.db) || config.redis.db < 0) {
+      throw new Error('REDIS_DB must be a non-negative integer.');
+    }
+
+    if (!Number.isInteger(config.redis.poolSize) || config.redis.poolSize < 1 || config.redis.poolSize > 10) {
+      throw new Error('REDIS_POOL_SIZE must be an integer between 1 and 10.');
+    }
+
+    if (!Number.isInteger(config.redis.connectTimeoutMs) || config.redis.connectTimeoutMs < 100 || config.redis.connectTimeoutMs > 30000) {
+      throw new Error('REDIS_CONNECT_TIMEOUT_MS must be an integer between 100 and 30000.');
+    }
+
+    if (!Number.isInteger(config.redis.commandTimeoutMs) || config.redis.commandTimeoutMs < 100 || config.redis.commandTimeoutMs > 30000) {
+      throw new Error('REDIS_COMMAND_TIMEOUT_MS must be an integer between 100 and 30000.');
+    }
+
+    if (!Number.isInteger(config.redis.failureCooldownMs) || config.redis.failureCooldownMs < 1000) {
+      throw new Error('REDIS_FAILURE_COOLDOWN_MS must be an integer greater than or equal to 1000.');
     }
   }
 }

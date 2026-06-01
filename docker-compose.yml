@@ -11,6 +11,15 @@ services:
       CORS_ORIGINS: "http://localhost:3000"
       TRUST_PROXY: "false"
       LOG_LEVEL: "info"
+      RATE_LIMIT_REDIS_ENABLED: "${RATE_LIMIT_REDIS_ENABLED:-true}"
+      REDIS_HOST: "${REDIS_HOST:-redis}"
+      REDIS_PORT: "${REDIS_PORT:-6379}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+      REDIS_DB: "${REDIS_DB:-0}"
+      REDIS_POOL_SIZE: "${REDIS_POOL_SIZE:-4}"
+      REDIS_CONNECT_TIMEOUT_MS: "${REDIS_CONNECT_TIMEOUT_MS:-1000}"
+      REDIS_COMMAND_TIMEOUT_MS: "${REDIS_COMMAND_TIMEOUT_MS:-500}"
+      REDIS_FAILURE_COOLDOWN_MS: "${REDIS_FAILURE_COOLDOWN_MS:-30000}"
       EMAIL_PROVIDER: "${EMAIL_PROVIDER:-mock}"
       SMTP_HOST: "${SMTP_HOST:-}"
       SMTP_PORT: "${SMTP_PORT:-587}"
@@ -26,6 +35,8 @@ services:
       - travel_glow_data:/data
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -50,7 +61,20 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - travel_glow_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   travel_glow_uploads:
   travel_glow_data:
   travel_glow_pgdata:
+  travel_glow_redisdata:

@@ -22,18 +22,18 @@ function createResponse() {
   };
 }
 
-test('rateLimit returns retry metadata after the request budget is exhausted', () => {
+test('rateLimit returns retry metadata after the request budget is exhausted', async () => {
   const limiter = rateLimit({ windowMs: 60_000, max: 1, keyPrefix: `unit-${Date.now()}` });
   const req = { ip: '127.0.0.1', socket: {} };
 
   const first = createResponse();
   let nextCalls = 0;
-  limiter(req, first, () => {
+  await limiter(req, first, () => {
     nextCalls += 1;
   });
 
   const second = createResponse();
-  limiter(req, second, () => {
+  await limiter(req, second, () => {
     nextCalls += 1;
   });
 
