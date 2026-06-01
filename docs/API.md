@@ -77,12 +77,13 @@ which defaults to `true`.
 
 - `POST /checkins`
 - `GET /checkins`
-- `GET /checkins?page=1&pageSize=20`
+- `GET /checkins?limit=20`
+- `GET /checkins?limit=20&cursor=<nextCursor>`
 - `GET /checkins/:id`
 - `PUT /checkins/:id`
 - `DELETE /checkins/:id`
 
-Without pagination parameters, `GET /checkins` returns the legacy array response. With pagination parameters, it returns:
+Without pagination parameters, `GET /checkins` returns the legacy array response. With pagination parameters, it uses cursor-based pagination and returns:
 
 ```json
 {
@@ -90,10 +91,12 @@ Without pagination parameters, `GET /checkins` returns the legacy array response
   "pagination": {
     "page": 1,
     "pageSize": 20,
-    "total": 0,
-    "totalPages": 1,
+    "nextCursor": null,
     "hasNextPage": false,
-    "hasPreviousPage": false
+    "hasPreviousPage": false,
+    "cursor": null,
+    "total": null,
+    "totalPages": null
   }
 }
 ```

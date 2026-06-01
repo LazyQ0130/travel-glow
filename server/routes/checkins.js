@@ -5,8 +5,8 @@ const auth = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const { uploadPhotos, uploadedPhotos, deleteLocalUpload, validateUploadedFiles } = require('../upload');
 const { AppError } = require('../errors');
-const { getPagination, hasPagination, paginated } = require('../pagination');
-const { activeWhere, activePhotosInclude } = require('../services/content-service');
+const { getPagination, hasPagination } = require('../pagination');
+const { activeWhere } = require('../services/content-service');
 
 const router = express.Router();
 
@@ -17,16 +17,128 @@ const createCheckinSchema = z.object({
   title: z.string().max(100, 'title must be 100 characters or fewer.').optional()
 });
 
+const updateCheckinSchema = z.object({
+  regionId: z.string().trim().min(1, 'regionId is required.').optional(),
+  checkinDate: z.iso.date({ message: 'checkinDate must be an ISO date in YYYY-MM-DD format.' }).optional(),
+  note: z.union([z.string().max(500, 'note must be 500 characters or fewer.'), z.null()]).optional(),
+  title: z.union([z.string().max(100, 'title must be 100 characters or fewer.'), z.null()]).optional()
+}).refine((data) => Object.keys(data).length > 0, {
+  message: 'At least one field is required.'
+});
+
 const checkinPhotosSchema = z.object({
   photos: z.array(z.any())
     .min(1, 'Please upload at least one photo.')
     .max(9, 'Please upload no more than 9 photos.')
 });
 
-function includeFullCheckin() {
+function selectRegionSummary() {
   return {
-    region: { include: { parent: true } },
-    photos: activePhotosInclude()
+    id: true,
+    name: true,
+    shortName: true,
+    type: true,
+    parentId: true,
+    code: true,
+    regionType: true,
+    totalCities: true,
+    sortOrder: true
+  };
+}
+
+function selectPhotoSummary() {
+  return {
+    id: true,
+    imageUrl: true,
+    originalName: true,
+    mimeType: true,
+    size: true,
+    createdAt: true
+  };
+}
+
+function selectFullCheckin() {
+  return {
+    id: true,
+    userId: true,
+    regionId: true,
+    checkinDate: true,
+    note: true,
+    title: true,
+    createdAt: true,
+    updatedAt: true,
+    region: {
+      select: {
+        ...selectRegionSummary(),
+        parent: { select: selectRegionSummary() }
+      }
+    },
+    photos: {
+      where: { deletedAt: null },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: selectPhotoSummary()
+    }
+  };
+}
+
+function getCursorPagination(query = {}) {
+  const pagination = getPagination(query);
+  const cursor = typeof query.cursor === 'string' && query.cursor.trim() ? query.cursor.trim() : null;
+  return {
+    limit: pagination.pageSize,
+    cursor,
+    cursorValues: cursor ? decodeCursor(cursor) : null,
+    legacyPage: pagination.page
+  };
+}
+
+function encodeCursor(checkin) {
+  return Buffer.from(JSON.stringify({
+    checkinDate: checkin.checkinDate.toISOString(),
+    id: checkin.id
+  })).toString('base64url');
+}
+
+function decodeCursor(cursor) {
+  try {
+    const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    const checkinDate = new Date(decoded.checkinDate);
+    if (!decoded.id || Number.isNaN(checkinDate.getTime())) {
+      throw new Error('Invalid cursor payload.');
+    }
+    return { checkinDate, id: decoded.id };
+  } catch (error) {
+    throw new AppError(400, 'Invalid pagination cursor.', 'INVALID_CURSOR');
+  }
+}
+
+function cursorWhere(cursorValues) {
+  if (!cursorValues) return {};
+  return {
+    OR: [
+      { checkinDate: { lt: cursorValues.checkinDate } },
+      { checkinDate: cursorValues.checkinDate, id: { lt: cursorValues.id } }
+    ]
+  };
+}
+
+function cursorPaginated(rows, pagination) {
+  const hasNextPage = rows.length > pagination.limit;
+  const data = hasNextPage ? rows.slice(0, pagination.limit) : rows;
+  const nextCursor = hasNextPage ? encodeCursor(data[data.length - 1]) : null;
+
+  return {
+    data,
+    pagination: {
+      pageSize: pagination.limit,
+      nextCursor,
+      hasNextPage,
+      hasPreviousPage: Boolean(pagination.cursor),
+      cursor: pagination.cursor,
+      page: pagination.legacyPage,
+      total: null,
+      totalPages: null
+    }
   };
 }
 
@@ -49,7 +161,7 @@ router.post('/', auth, uploadPhotos, validate(createCheckinSchema), validateChec
     const { regionId, checkinDate, note, title } = req.body;
     await validateUploadedFiles(files);
 
-    const region = await prisma.region.findUnique({ where: { id: regionId } });
+    const region = await prisma.region.findUnique({ where: { id: regionId }, select: { id: true } });
     if (!region) throw new AppError(404, 'Region not found.', 'REGION_NOT_FOUND');
 
     const checkin = await prisma.checkin.create({
@@ -69,7 +181,7 @@ router.post('/', auth, uploadPhotos, validate(createCheckinSchema), validateChec
           }))
         }
       },
-      include: includeFullCheckin()
+      select: selectFullCheckin()
     });
 
     res.status(201).json(checkin);
@@ -84,17 +196,23 @@ router.post('/', auth, uploadPhotos, validate(createCheckinSchema), validateChec
 router.get('/', auth, async (req, res, next) => {
   try {
     const where = activeWhere({ userId: req.user.id });
-    const pagination = getPagination(req.query);
-    const [checkins, total] = await Promise.all([
-      prisma.checkin.findMany({
-        where,
-        include: includeFullCheckin(),
-        orderBy: { checkinDate: 'desc' },
-        ...(hasPagination(req.query) ? { skip: pagination.skip, take: pagination.take } : {})
-      }),
-      hasPagination(req.query) ? prisma.checkin.count({ where }) : Promise.resolve(0)
-    ]);
-    res.json(hasPagination(req.query) ? paginated(checkins, total, pagination) : checkins);
+    if (hasPagination(req.query) || req.query.cursor !== undefined) {
+      const pagination = getCursorPagination(req.query);
+      const checkins = await prisma.checkin.findMany({
+        where: { ...where, ...cursorWhere(pagination.cursorValues) },
+        select: selectFullCheckin(),
+        orderBy: [{ checkinDate: 'desc' }, { id: 'desc' }],
+        take: pagination.limit + 1
+      });
+      return res.json(cursorPaginated(checkins, pagination));
+    }
+
+    const checkins = await prisma.checkin.findMany({
+      where,
+      select: selectFullCheckin(),
+      orderBy: [{ checkinDate: 'desc' }, { id: 'desc' }]
+    });
+    res.json(checkins);
   } catch (error) {
     next(error);
   }
@@ -104,7 +222,7 @@ router.get('/:id', auth, async (req, res, next) => {
   try {
     const checkin = await prisma.checkin.findFirst({
       where: activeWhere({ id: req.params.id, userId: req.user.id }),
-      include: includeFullCheckin()
+      select: selectFullCheckin()
     });
     if (!checkin) throw new AppError(404, 'Checkin not found.', 'CHECKIN_NOT_FOUND');
     res.json(checkin);
@@ -113,14 +231,17 @@ router.get('/:id', auth, async (req, res, next) => {
   }
 });
 
-router.put('/:id', auth, async (req, res, next) => {
+router.put('/:id', auth, validate(updateCheckinSchema), async (req, res, next) => {
   try {
-    const existing = await prisma.checkin.findFirst({ where: activeWhere({ id: req.params.id, userId: req.user.id }) });
+    const existing = await prisma.checkin.findFirst({
+      where: activeWhere({ id: req.params.id, userId: req.user.id }),
+      select: { id: true }
+    });
     if (!existing) throw new AppError(404, 'Checkin not found.', 'CHECKIN_NOT_FOUND');
 
     const { regionId, checkinDate, note, title } = req.body;
     if (regionId) {
-      const region = await prisma.region.findUnique({ where: { id: regionId } });
+      const region = await prisma.region.findUnique({ where: { id: regionId }, select: { id: true } });
       if (!region) throw new AppError(404, 'Region not found.', 'REGION_NOT_FOUND');
     }
 
@@ -132,7 +253,7 @@ router.put('/:id', auth, async (req, res, next) => {
         ...(note !== undefined ? { note } : {}),
         ...(title !== undefined ? { title } : {})
       },
-      include: includeFullCheckin()
+      select: selectFullCheckin()
     });
     res.json(checkin);
   } catch (error) {
@@ -144,13 +265,21 @@ router.delete('/:id', auth, async (req, res, next) => {
   try {
     const existing = await prisma.checkin.findFirst({
       where: activeWhere({ id: req.params.id, userId: req.user.id }),
-      include: { photos: activePhotosInclude() }
+      select: {
+        id: true,
+        photos: {
+          where: { deletedAt: null },
+          select: { imageUrl: true }
+        }
+      }
     });
     if (!existing) throw new AppError(404, 'Checkin not found.', 'CHECKIN_NOT_FOUND');
 
     const now = new Date();
-    await prisma.photo.updateMany({ where: activeWhere({ checkinId: existing.id, userId: req.user.id }), data: { deletedAt: now } });
-    await prisma.checkin.update({ where: { id: existing.id }, data: { deletedAt: now } });
+    await prisma.$transaction([
+      prisma.photo.updateMany({ where: activeWhere({ checkinId: existing.id, userId: req.user.id }), data: { deletedAt: now } }),
+      prisma.checkin.update({ where: { id: existing.id }, data: { deletedAt: now } })
+    ]);
     for (const photo of existing.photos) {
       await deleteLocalUpload(photo.imageUrl);
     }

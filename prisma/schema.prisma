@@ -135,7 +135,7 @@ model Checkin {
 
   @@index([userId])
   @@index([regionId])
-  @@index([userId, deletedAt, checkinDate])
+  @@index([userId, deletedAt, checkinDate, id])
   @@index([regionId, deletedAt])
 }
 
@@ -155,5 +155,6 @@ model Photo {
   @@index([userId])
   @@index([checkinId])
   @@index([userId, deletedAt, createdAt])
-  @@index([checkinId, deletedAt])
+  @@index([checkinId, deletedAt, createdAt, id])
+  @@index([checkinId, userId, deletedAt])
 }

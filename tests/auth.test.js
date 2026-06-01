@@ -476,7 +476,7 @@ test('checkins support pagination and soft delete', async () => {
     }
   });
 
-  const pageResponse = await request('/checkins?page=1&pageSize=1', {
+  const pageResponse = await request('/checkins?limit=1', {
     headers: { Authorization: `Bearer ${login.token}` }
   });
   const page = await json(pageResponse);
@@ -484,6 +484,24 @@ test('checkins support pagination and soft delete', async () => {
   assert.ok(Array.isArray(page.data));
   assert.equal(page.pagination.page, 1);
   assert.equal(page.pagination.pageSize, 1);
+  assert.equal(page.pagination.total, null);
+  assert.equal(page.pagination.totalPages, null);
+  assert.ok(Object.hasOwn(page.pagination, 'nextCursor'));
+
+  if (page.pagination.nextCursor) {
+    const nextPageResponse = await request(`/checkins?limit=1&cursor=${encodeURIComponent(page.pagination.nextCursor)}`, {
+      headers: { Authorization: `Bearer ${login.token}` }
+    });
+    const nextPage = await json(nextPageResponse);
+    assert.equal(nextPageResponse.status, 200);
+    assert.equal(nextPage.pagination.hasPreviousPage, true);
+    assert.notEqual(nextPage.data[0]?.id, page.data[0]?.id);
+  }
+
+  const invalidCursorResponse = await request('/checkins?limit=1&cursor=not-a-cursor', {
+    headers: { Authorization: `Bearer ${login.token}` }
+  });
+  assert.equal(invalidCursorResponse.status, 400);
 
   const deleteResponse = await request(`/checkins/${checkin.id}`, {
     method: 'DELETE',
