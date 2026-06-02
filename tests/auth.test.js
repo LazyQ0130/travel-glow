@@ -505,7 +505,7 @@ test('registration requires a register email verification code', async () => {
   assert.equal(registerResponse.status, 200);
   assert.ok(registered.token);
   assert.equal(registered.user.username, username);
-  assert.match(registered.user.email, /\*/);
+  assert.equal(registered.user.email, email);
 
   await prisma.user.update({ where: { id: registered.user.id }, data: { deletedAt: new Date(), username: null, email: null } });
 });
@@ -577,7 +577,7 @@ test('email verification binds a new email and rejects duplicates', async () => 
   });
   const bind = await json(bindResponse);
   assert.equal(bindResponse.status, 200);
-  assert.match(bind.email, /\*/);
+  assert.equal(bind.email, nextEmail);
 
   await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), username: null, email: null } });
   await prisma.user.update({ where: { id: taken.user.id }, data: { deletedAt: new Date(), username: null, email: null } });
