@@ -3,7 +3,6 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
-const csrf = require('csurf');
 
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/user');
@@ -18,18 +17,16 @@ const { config, assertRuntimeConfig, corsOptions } = require('./config');
 const { logger, requestLogger } = require('./logger');
 const { notFound, errorHandler } = require('./errors');
 const { startServer } = require('./start-server');
+const { createCsrfProtection } = require('./middleware/csrf');
 
 assertRuntimeConfig();
 
 const app = express();
-const csrfProtection = csrf({
-  cookie: {
-    key: 'travel_glow_csrf',
-    httpOnly: true,
-    sameSite: 'strict',
-    secure: config.isProduction,
-    path: '/api'
-  }
+const csrfProtection = createCsrfProtection({
+  signingKey: config.jwtSecret,
+  secure: config.isProduction,
+  sameSite: 'strict',
+  path: '/api'
 });
 
 function csrfTokenHeader(req, res, next) {

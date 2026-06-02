@@ -39,7 +39,7 @@ Every response also includes an `X-Request-Id` header.
 - `DELETE /auth/sessions/:id`
 - `DELETE /auth/sessions/others`
 
-Password registration and password changes require at least 10 characters with lowercase, uppercase, number, and symbol characters. Five failed password login attempts lock the account for 15 minutes.
+Password registration and password changes require 8 to 72 characters, at least 3 of lowercase letters, uppercase letters, numbers, and symbols, and must not use a known common password. Five failed password login attempts lock the account for 15 minutes.
 
 ## User
 

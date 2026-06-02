@@ -127,6 +127,18 @@ test('protected endpoints reject missing and invalid tokens with uniform error f
   assert.equal(typeof invalid.message, 'string');
 });
 
+test('unsafe requests require a valid CSRF token', async () => {
+  const response = await fetch(`${baseUrl}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier: 'missing-csrf', password: 'TravelGlow!2026' })
+  });
+  const body = await json(response);
+
+  assert.equal(response.status, 403);
+  assert.equal(body.code, 'CSRF_TOKEN_INVALID');
+});
+
 test('registration rejects weak passwords before creating an account', async () => {
   const response = await request('/auth/register', {
     method: 'POST',
