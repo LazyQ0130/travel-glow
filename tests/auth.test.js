@@ -11,15 +11,47 @@ const prisma = require('../server/db');
 
 let server;
 let baseUrl;
+let csrfCookie = '';
+let csrfToken = '';
 
-function request(path, options = {}) {
-  return fetch(`${baseUrl}${path}`, {
+function isUnsafeMethod(method = 'GET') {
+  return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method).toUpperCase());
+}
+
+function rememberCsrf(response) {
+  const token = response.headers.get('x-csrf-token');
+  if (token) csrfToken = token;
+
+  const setCookie = response.headers.get('set-cookie');
+  if (setCookie) csrfCookie = setCookie.split(';')[0];
+}
+
+async function ensureCsrfToken() {
+  if (csrfCookie && csrfToken) return;
+  const response = await fetch(`${baseUrl}/csrf-token`, {
+    headers: csrfCookie ? { Cookie: csrfCookie } : {}
+  });
+  rememberCsrf(response);
+  await response.arrayBuffer();
+}
+
+async function request(path, options = {}) {
+  const method = options.method || 'GET';
+  if (isUnsafeMethod(method)) {
+    await ensureCsrfToken();
+  }
+
+  const response = await fetch(`${baseUrl}${path}`, {
     ...options,
     headers: {
       ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
+      ...(csrfCookie ? { Cookie: csrfCookie } : {}),
+      ...(isUnsafeMethod(method) && csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
       ...(options.headers || {})
     }
   });
+  rememberCsrf(response);
+  return response;
 }
 
 async function json(response) {
@@ -148,9 +180,10 @@ test('registration rejects duplicate emails before verifying the code', async ()
 });
 
 test('password login creates a server-validated session and logout revokes it', async () => {
+  const { user, username, password } = await createAuthUser('loginflow');
   const loginResponse = await request('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ identifier: 'qyf', password: '123456' })
+    body: JSON.stringify({ identifier: username, password })
   });
   const login = await json(loginResponse);
   assert.equal(loginResponse.status, 200);
@@ -161,7 +194,7 @@ test('password login creates a server-validated session and logout revokes it', 
   });
   const me = await json(meResponse);
   assert.equal(meResponse.status, 200);
-  assert.equal(me.user.username, 'qyf');
+  assert.equal(me.user.username, username);
   assert.ok(Array.isArray(me.sessions));
 
   const logoutResponse = await request('/auth/logout', {
@@ -175,12 +208,20 @@ test('password login creates a server-validated session and logout revokes it', 
     headers: { Authorization: `Bearer ${login.token}` }
   });
   assert.equal(revokedResponse.status, 401);
+
+  await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), username: null } });
 });
 
 test('mock email verification supports email login in development', async () => {
+  const email = `email-login-${Date.now()}@example.com`;
+  const { user } = await createAuthUser('emaillogin', 'TravelGlow!2026', {
+    email,
+    emailVerifiedAt: new Date()
+  });
+
   const codeResponse = await request('/auth/email/send', {
     method: 'POST',
-    body: JSON.stringify({ email: '321167759@qq.com', purpose: 'login' })
+    body: JSON.stringify({ email, purpose: 'login' })
   });
   const codeBody = await json(codeResponse);
   assert.equal(codeResponse.status, 200);
@@ -188,11 +229,13 @@ test('mock email verification supports email login in development', async () => 
 
   const loginResponse = await request('/auth/login/email', {
     method: 'POST',
-    body: JSON.stringify({ email: '321167759@qq.com', code: codeBody.devCode })
+    body: JSON.stringify({ email, code: codeBody.devCode })
   });
   const login = await json(loginResponse);
   assert.equal(loginResponse.status, 200);
   assert.ok(login.token);
+
+  await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), username: null, email: null } });
 });
 
 test('email code sending rejects local-only recipient domains', async () => {
@@ -245,9 +288,10 @@ test('password login locks an account after repeated failures', async () => {
 });
 
 test('settings update persists for the current user', async () => {
+  const { user, username, password } = await createAuthUser('settings');
   const loginResponse = await request('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ identifier: 'qyf', password: '123456' })
+    body: JSON.stringify({ identifier: username, password })
   });
   const login = await json(loginResponse);
 
@@ -267,6 +311,72 @@ test('settings update persists for the current user', async () => {
   const me = await json(meResponse);
   assert.equal(me.settings.mapTheme, 'aurora');
   assert.equal(me.settings.glowColor, 'emerald');
+
+  await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), username: null } });
+});
+
+test('storage statistics only include the current user uploads', async () => {
+  const owner = await createAuthUser('storagea');
+  const other = await createAuthUser('storageb');
+  const region = await prisma.region.findFirst({ where: { type: 'city' } });
+  assert.ok(region);
+  const now = new Date();
+
+  try {
+    const ownerCheckin = await prisma.checkin.create({
+      data: {
+        userId: owner.user.id,
+        regionId: region.id,
+        checkinDate: new Date('2026-05-30T00:00:00.000Z'),
+        title: `storage-owner-${Date.now()}`
+      }
+    });
+    const otherCheckin = await prisma.checkin.create({
+      data: {
+        userId: other.user.id,
+        regionId: region.id,
+        checkinDate: new Date('2026-05-30T00:00:00.000Z'),
+        title: `storage-other-${Date.now()}`
+      }
+    });
+
+    await prisma.photo.create({
+      data: {
+        userId: owner.user.id,
+        checkinId: ownerCheckin.id,
+        imageUrl: `/uploads/storage-owner-${Date.now()}.jpg`,
+        originalName: 'owner.jpg',
+        mimeType: 'image/jpeg',
+        size: 1234
+      }
+    });
+    await prisma.photo.create({
+      data: {
+        userId: other.user.id,
+        checkinId: otherCheckin.id,
+        imageUrl: `/uploads/storage-other-${Date.now()}.jpg`,
+        originalName: 'other.jpg',
+        mimeType: 'image/jpeg',
+        size: 9999
+      }
+    });
+
+    const login = await loginAs(owner.username, owner.password);
+    const response = await request('/user/storage', {
+      headers: { Authorization: `Bearer ${login.token}` }
+    });
+    const body = await json(response);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.photoCount, 1);
+    assert.equal(body.checkinCount, 1);
+    assert.equal(body.uploadFolderSize, 1234);
+  } finally {
+    await prisma.photo.updateMany({ where: { userId: { in: [owner.user.id, other.user.id] } }, data: { deletedAt: now } });
+    await prisma.checkin.updateMany({ where: { userId: { in: [owner.user.id, other.user.id] } }, data: { deletedAt: now } });
+    await prisma.user.update({ where: { id: owner.user.id }, data: { deletedAt: now, username: null } });
+    await prisma.user.update({ where: { id: other.user.id }, data: { deletedAt: now, username: null } });
+  }
 });
 
 test('security password verification validates the current password', async () => {
@@ -444,6 +554,40 @@ test('email verification binds a new email and rejects duplicates', async () => 
   await prisma.user.update({ where: { id: taken.user.id }, data: { deletedAt: new Date(), username: null, email: null } });
 });
 
+test('profile update cannot directly change email verification state', async () => {
+  const password = 'TravelGlow!2026';
+  const originalEmail = `profile-email-${Date.now()}@example.com`;
+  const originalVerifiedAt = new Date('2026-01-01T00:00:00.000Z');
+  const { user, username } = await createAuthUser('profilemail', password, {
+    email: originalEmail,
+    emailVerifiedAt: originalVerifiedAt
+  });
+  const login = await loginAs(username, password);
+
+  const response = await request('/user/profile', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${login.token}` },
+    body: JSON.stringify({
+      nickname: 'Updated Profile',
+      bio: 'Updated bio',
+      email: `bypass-${Date.now()}@example.com`,
+      emailVerifiedAt: new Date().toISOString()
+    })
+  });
+  const body = await json(response);
+  assert.equal(response.status, 200);
+  assert.equal(body.nickname, 'Updated Profile');
+  assert.equal(body.bio, 'Updated bio');
+
+  const stored = await prisma.user.findUnique({ where: { id: user.id } });
+  assert.equal(stored.email, originalEmail);
+  assert.equal(stored.emailVerifiedAt.toISOString(), originalVerifiedAt.toISOString());
+  assert.equal(stored.nickname, 'Updated Profile');
+  assert.equal(stored.bio, 'Updated bio');
+
+  await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), username: null, email: null } });
+});
+
 test('session list marks the current device', async () => {
   const { user, username, password } = await createAuthUser('sessions');
   const login = await loginAs(username, password);
@@ -459,9 +603,10 @@ test('session list marks the current device', async () => {
 });
 
 test('checkins support pagination and soft delete', async () => {
+  const { user, username, password } = await createAuthUser('pageflow');
   const loginResponse = await request('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ identifier: 'qyf', password: '123456' })
+    body: JSON.stringify({ identifier: username, password })
   });
   const login = await json(loginResponse);
   const region = await prisma.region.findFirst({ where: { type: 'city' } });
@@ -516,12 +661,15 @@ test('checkins support pagination and soft delete', async () => {
     headers: { Authorization: `Bearer ${login.token}` }
   });
   assert.equal(getDeletedResponse.status, 404);
+
+  await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), username: null } });
 });
 
 test('checkin creation validates body fields and photo count', async () => {
+  const { user, username, password } = await createAuthUser('createval2');
   const loginResponse = await request('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ identifier: 'qyf', password: '123456' })
+    body: JSON.stringify({ identifier: username, password })
   });
   const login = await json(loginResponse);
   const region = await prisma.region.findFirst({ where: { type: 'city' } });
@@ -558,12 +706,15 @@ test('checkin creation validates body fields and photo count', async () => {
   assert.equal(missingPhotosResponse.status, 400);
   assert.equal(missingPhotos.code, 'VALIDATION_ERROR');
   assert.match(JSON.stringify(missingPhotos.details.fieldErrors.photos), /at least one photo/);
+
+  await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), username: null } });
 });
 
 test('photo upload rejects files with a mismatched image signature', async () => {
+  const { user, username, password } = await createAuthUser('sigreject');
   const loginResponse = await request('/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ identifier: 'qyf', password: '123456' })
+    body: JSON.stringify({ identifier: username, password })
   });
   const login = await json(loginResponse);
   const region = await prisma.region.findFirst({ where: { type: 'city' } });
@@ -590,4 +741,5 @@ test('photo upload rejects files with a mismatched image signature', async () =>
   assert.equal(body.code, 'INVALID_UPLOAD_SIGNATURE');
 
   await prisma.checkin.update({ where: { id: checkin.id }, data: { deletedAt: new Date() } });
+  await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), username: null } });
 });

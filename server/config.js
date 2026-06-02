@@ -157,11 +157,14 @@ function assertRuntimeConfig() {
 }
 
 function corsOptions() {
+  const sharedOptions = { exposedHeaders: ['X-CSRF-Token'] };
+
   if (!config.isProduction) {
-    return { origin: true };
+    return { origin: true, ...sharedOptions };
   }
 
   return {
+    ...sharedOptions,
     origin(origin, callback) {
       if (!origin || config.corsOrigins.includes(origin)) {
         return callback(null, true);

@@ -12,20 +12,23 @@
     "test:integration": "node --test tests/integration/*.test.js",
     "test:coverage": "node --test --experimental-test-coverage tests/*.test.js tests/unit/*.test.js tests/integration/*.test.js",
     "check:syntax": "node scripts/check-syntax.js",
+    "build:css": "tailwindcss -i ./public/tailwind-input.css -o ./public/app.css --minify",
     "check:smoke": "node scripts/smoke.js",
     "check": "npx prisma validate && npm run check:syntax && npm test && npm run check:smoke",
     "backup": "node scripts/backup.js",
     "logs:cleanup": "node scripts/cleanup-logs.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:migrate:deploy": "node scripts/ensure-sqlite-db.js && prisma migrate deploy",
     "prisma:seed": "node prisma/seed.js",
     "setup": "npm install && npx prisma generate && npx prisma migrate dev --name init && npm run prisma:seed"
   },
   "dependencies": {
     "@prisma/client": "6.8.2",
     "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "csurf": "^1.11.0",
     "dotenv": "^16.5.0",
     "express": "^4.19.2",
     "helmet": "^8.2.0",
@@ -38,8 +41,10 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.3.0",
     "nodemon": "^3.1.10",
     "prisma": "6.8.2",
-    "supertest": "^7.2.2"
+    "supertest": "^7.2.2",
+    "tailwindcss": "^4.3.0"
   }
 }

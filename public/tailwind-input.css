@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@source "./index.html";
+@source "./app.js";
+@source "./me-app.js";
+@source "./account-security.js";
+
+@theme {
+  --font-sans: Inter, ui-sans-serif, system-ui, PingFang SC, Microsoft YaHei, sans-serif;
+  --animate-soft-pulse: softPulse 2.8s ease-in-out infinite;
+  --animate-float-glow: floatGlow 3.2s ease-in-out infinite;
+  --animate-sheet-in: sheetIn .36s ease-out both;
+
+  @keyframes softPulse {
+    0%, 100% {
+      opacity: .62;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.08);
+    }
+  }
+
+  @keyframes floatGlow {
+    0%, 100% {
+      transform: translateY(0);
+      box-shadow: 0 0 26px rgba(6,182,212,.34);
+    }
+    50% {
+      transform: translateY(-4px);
+      box-shadow: 0 0 42px rgba(6,182,212,.56);
+    }
+  }
+
+  @keyframes sheetIn {
+    0% {
+      transform: translateY(100%);
+      opacity: .6;
+    }
+    100% {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+}

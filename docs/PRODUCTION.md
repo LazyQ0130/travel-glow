@@ -9,7 +9,7 @@ NODE_ENV=production
 PORT=3000
 APP_URL=https://your-domain.example
 
-DATABASE_URL="postgresql://travel_glow:strong-password@db-host:5432/travel_glow?schema=public"
+DATABASE_URL="file:/data/travel-glow.db"
 JWT_SECRET="replace-with-a-long-random-secret"
 JWT_EXPIRES_IN="30d"
 CORS_ORIGINS="https://your-domain.example"
@@ -51,7 +51,9 @@ SMTP notes:
 
 ## PostgreSQL Notes
 
-The current Prisma datasource provider is still `sqlite`. For a PostgreSQL production rollout:
+The current Prisma datasource provider is `sqlite`, and the Docker Compose
+sample persists the SQLite database in the `travel_glow_data` named volume. For
+a PostgreSQL production rollout:
 
 1. Change `prisma/schema.prisma` datasource provider from `sqlite` to `postgresql`.
 2. Set production `DATABASE_URL` to the PostgreSQL connection string.
@@ -61,13 +63,14 @@ The current Prisma datasource provider is still `sqlite`. For a PostgreSQL produ
 ## Docker Start
 
 ```sh
-docker build -t travel-glow .
-docker run --env-file .env -p 3000:3000 travel-glow
+docker compose up --build
 ```
 
-The image starts with `scripts/start.sh`. By default it runs:
+The image starts with `scripts/start.sh`. By default it ensures the SQLite file
+exists and then runs:
 
 ```sh
+node scripts/ensure-sqlite-db.js
 npx prisma migrate deploy
 ```
 

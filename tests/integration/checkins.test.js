@@ -82,6 +82,12 @@ async function createCheckin(userId, regionId, data = {}) {
   return checkin;
 }
 
+async function createCsrfAgent() {
+  const agent = request.agent(app);
+  const response = await agent.get('/api/csrf-token').expect(200);
+  return { agent, csrfToken: response.headers['x-csrf-token'] };
+}
+
 async function cleanup() {
   while (createdCheckins.length) {
     const id = createdCheckins.pop();
@@ -124,11 +130,16 @@ test.after(async () => {
 });
 
 test('checkins authentication middleware protects all CRUD endpoints', async () => {
+  const { agent, csrfToken } = await createCsrfAgent();
   await request(app).get('/api/checkins').expect(401);
-  await request(app).post('/api/checkins').send({}).expect(401);
+  await request(app).post('/api/checkins').send({}).expect(403);
   await request(app).get('/api/checkins/missing').expect(401);
-  await request(app).put('/api/checkins/missing').send({ title: 'Updated' }).expect(401);
-  await request(app).delete('/api/checkins/missing').expect(401);
+  await request(app).put('/api/checkins/missing').send({ title: 'Updated' }).expect(403);
+  await request(app).delete('/api/checkins/missing').expect(403);
+
+  await agent.post('/api/checkins').set('X-CSRF-Token', csrfToken).send({}).expect(401);
+  await agent.put('/api/checkins/missing').set('X-CSRF-Token', csrfToken).send({ title: 'Updated' }).expect(401);
+  await agent.delete('/api/checkins/missing').set('X-CSRF-Token', csrfToken).expect(401);
 
   await request(app)
     .get('/api/checkins')
@@ -137,14 +148,16 @@ test('checkins authentication middleware protects all CRUD endpoints', async () 
 });
 
 test('checkins CRUD flow works through HTTP with supertest', async () => {
+  const { agent, csrfToken } = await createCsrfAgent();
   const region = await createRegion('crud_a');
   const nextRegion = await createRegion('crud_b');
   const owner = await createAuthContext('crud');
   const other = await createAuthContext('other');
   const photo = await imageBuffer();
 
-  const createResponse = await request(app)
+  const createResponse = await agent
     .post('/api/checkins')
+    .set('X-CSRF-Token', csrfToken)
     .set('Authorization', `Bearer ${owner.token}`)
     .field('regionId', region.id)
     .field('checkinDate', '2026-05-30')
@@ -159,13 +172,13 @@ test('checkins CRUD flow works through HTTP with supertest', async () => {
   assert.equal(createResponse.body.regionId, region.id);
   assert.equal(createResponse.body.photos.length, 1);
 
-  const listResponse = await request(app)
+  const listResponse = await agent
     .get('/api/checkins')
     .set('Authorization', `Bearer ${owner.token}`)
     .expect(200);
   assert.ok(listResponse.body.some((item) => item.id === createResponse.body.id));
 
-  const pageResponse = await request(app)
+  const pageResponse = await agent
     .get('/api/checkins?limit=1')
     .set('Authorization', `Bearer ${owner.token}`)
     .expect(200);
@@ -173,20 +186,21 @@ test('checkins CRUD flow works through HTTP with supertest', async () => {
   assert.equal(pageResponse.body.pagination.pageSize, 1);
   assert.ok(Object.hasOwn(pageResponse.body.pagination, 'nextCursor'));
 
-  const getResponse = await request(app)
+  const getResponse = await agent
     .get(`/api/checkins/${createResponse.body.id}`)
     .set('Authorization', `Bearer ${owner.token}`)
     .expect(200);
   assert.equal(getResponse.body.id, createResponse.body.id);
   assert.equal(getResponse.body.region.id, region.id);
 
-  await request(app)
+  await agent
     .get(`/api/checkins/${createResponse.body.id}`)
     .set('Authorization', `Bearer ${other.token}`)
     .expect(404);
 
-  const updateResponse = await request(app)
+  const updateResponse = await agent
     .put(`/api/checkins/${createResponse.body.id}`)
+    .set('X-CSRF-Token', csrfToken)
     .set('Authorization', `Bearer ${owner.token}`)
     .send({
       regionId: nextRegion.id,
@@ -199,19 +213,21 @@ test('checkins CRUD flow works through HTTP with supertest', async () => {
   assert.equal(updateResponse.body.title, 'Updated HTTP checkin');
   assert.equal(updateResponse.body.note, null);
 
-  await request(app)
+  await agent
     .put(`/api/checkins/${createResponse.body.id}`)
+    .set('X-CSRF-Token', csrfToken)
     .set('Authorization', `Bearer ${other.token}`)
     .send({ title: 'Forbidden update' })
     .expect(404);
 
-  const deleteResponse = await request(app)
+  const deleteResponse = await agent
     .delete(`/api/checkins/${createResponse.body.id}`)
+    .set('X-CSRF-Token', csrfToken)
     .set('Authorization', `Bearer ${owner.token}`)
     .expect(200);
   assert.equal(deleteResponse.body.message, 'Checkin deleted.');
 
-  await request(app)
+  await agent
     .get(`/api/checkins/${createResponse.body.id}`)
     .set('Authorization', `Bearer ${owner.token}`)
     .expect(404);
@@ -225,20 +241,23 @@ test('checkins CRUD flow works through HTTP with supertest', async () => {
 });
 
 test('checkins reject invalid create payloads and upload boundaries', async () => {
+  const { agent, csrfToken } = await createCsrfAgent();
   const region = await createRegion('validation');
   const { token } = await createAuthContext('createval');
   const photo = await imageBuffer();
 
-  const emptyBody = await request(app)
+  const emptyBody = await agent
     .post('/api/checkins')
+    .set('X-CSRF-Token', csrfToken)
     .set('Authorization', `Bearer ${token}`)
     .field('title', 'Missing required fields')
     .expect(400);
   assert.equal(emptyBody.body.code, 'VALIDATION_ERROR');
   assert.match(JSON.stringify(emptyBody.body.details), /regionId/);
 
-  const invalidFields = await request(app)
+  const invalidFields = await agent
     .post('/api/checkins')
+    .set('X-CSRF-Token', csrfToken)
     .set('Authorization', `Bearer ${token}`)
     .field('regionId', region.id)
     .field('checkinDate', 'not-a-date')
@@ -251,8 +270,9 @@ test('checkins reject invalid create payloads and upload boundaries', async () =
   assert.match(JSON.stringify(invalidFields.body.details), /100 characters/);
   assert.match(JSON.stringify(invalidFields.body.details), /500 characters/);
 
-  const missingPhotos = await request(app)
+  const missingPhotos = await agent
     .post('/api/checkins')
+    .set('X-CSRF-Token', csrfToken)
     .set('Authorization', `Bearer ${token}`)
     .field('regionId', region.id)
     .field('checkinDate', '2026-05-30')
@@ -260,8 +280,9 @@ test('checkins reject invalid create payloads and upload boundaries', async () =
   assert.equal(missingPhotos.body.code, 'VALIDATION_ERROR');
   assert.match(JSON.stringify(missingPhotos.body.details), /at least one photo/);
 
-  const invalidRegion = await request(app)
+  const invalidRegion = await agent
     .post('/api/checkins')
+    .set('X-CSRF-Token', csrfToken)
     .set('Authorization', `Bearer ${token}`)
     .field('regionId', 'missing-region')
     .field('checkinDate', '2026-05-30')
@@ -269,8 +290,9 @@ test('checkins reject invalid create payloads and upload boundaries', async () =
     .expect(404);
   assert.equal(invalidRegion.body.code, 'REGION_NOT_FOUND');
 
-  const badSignature = await request(app)
+  const badSignature = await agent
     .post('/api/checkins')
+    .set('X-CSRF-Token', csrfToken)
     .set('Authorization', `Bearer ${token}`)
     .field('regionId', region.id)
     .field('checkinDate', '2026-05-30')
@@ -278,8 +300,9 @@ test('checkins reject invalid create payloads and upload boundaries', async () =
     .expect(400);
   assert.equal(badSignature.body.code, 'INVALID_UPLOAD_SIGNATURE');
 
-  const tooMany = request(app)
+  const tooMany = agent
     .post('/api/checkins')
+    .set('X-CSRF-Token', csrfToken)
     .set('Authorization', `Bearer ${token}`)
     .field('regionId', region.id)
     .field('checkinDate', '2026-05-30');
@@ -291,42 +314,48 @@ test('checkins reject invalid create payloads and upload boundaries', async () =
 });
 
 test('checkins reject invalid update payloads and missing records', async () => {
+  const { agent, csrfToken } = await createCsrfAgent();
   const region = await createRegion('update_a');
   const missingRegionTarget = await createRegion('update_b');
   const { user, token } = await createAuthContext('updateval');
   const checkin = await createCheckin(user.id, region.id);
 
-  const empty = await request(app)
+  const empty = await agent
     .put(`/api/checkins/${checkin.id}`)
+    .set('X-CSRF-Token', csrfToken)
     .set('Authorization', `Bearer ${token}`)
     .send({})
     .expect(400);
   assert.equal(empty.body.code, 'VALIDATION_ERROR');
   assert.match(JSON.stringify(empty.body.details), /At least one field/);
 
-  const invalidDate = await request(app)
+  const invalidDate = await agent
     .put(`/api/checkins/${checkin.id}`)
+    .set('X-CSRF-Token', csrfToken)
     .set('Authorization', `Bearer ${token}`)
     .send({ checkinDate: '06/01/2026' })
     .expect(400);
   assert.equal(invalidDate.body.code, 'VALIDATION_ERROR');
 
-  const invalidText = await request(app)
+  const invalidText = await agent
     .put(`/api/checkins/${checkin.id}`)
+    .set('X-CSRF-Token', csrfToken)
     .set('Authorization', `Bearer ${token}`)
     .send({ title: 'x'.repeat(101), note: 'x'.repeat(501) })
     .expect(400);
   assert.equal(invalidText.body.code, 'VALIDATION_ERROR');
 
-  const missingRegion = await request(app)
+  const missingRegion = await agent
     .put(`/api/checkins/${checkin.id}`)
+    .set('X-CSRF-Token', csrfToken)
     .set('Authorization', `Bearer ${token}`)
     .send({ regionId: `${missingRegionTarget.id}_missing` })
     .expect(404);
   assert.equal(missingRegion.body.code, 'REGION_NOT_FOUND');
 
-  const missingCheckin = await request(app)
+  const missingCheckin = await agent
     .put('/api/checkins/missing-checkin')
+    .set('X-CSRF-Token', csrfToken)
     .set('Authorization', `Bearer ${token}`)
     .send({ title: 'No record' })
     .expect(404);

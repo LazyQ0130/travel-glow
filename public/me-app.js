@@ -24,7 +24,14 @@ function escapeHtml(value = '') {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function safeImageUrl(value = '', label = '旅光图片') {
+  return window.TravelGlowImages?.safeImageUrl?.(value, label)
+    || window.TravelGlowImages?.imagePlaceholder?.(label)
+    || '';
 }
 
 function showToast(message, tone = 'info') {
@@ -138,8 +145,10 @@ async function apiRequest(path, options = {}) {
   const isForm = requestOptions.body instanceof FormData;
   if (!isForm) headers['Content-Type'] = headers['Content-Type'] || 'application/json';
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  await window.TravelGlowCsrf?.apply?.(headers, requestOptions);
 
   const response = await fetch(`${API_BASE}${path}`, { ...requestOptions, headers });
+  window.TravelGlowCsrf?.capture?.(response);
   const data = await response.json().catch(() => ({}));
   const buildApiError = (fallbackMessage) => {
     const error = new Error(getApiErrorMessage(path, data, fallbackMessage));
@@ -258,11 +267,13 @@ async function refreshAll(options = {}) {
     loadPhotos(options),
     loadCheckins(options)
   ]);
+  window.TravelGlowShell?.restoreAuthenticatedPages?.();
   renderDerivedStats();
   renderChinaMap();
   renderWorldMap();
   renderAlbumPage();
   renderMePage();
+  window.TravelGlowShell?.bindAuthenticatedPageControls?.();
   createIcons();
 }
 
@@ -322,7 +333,7 @@ function renderLoggedInMePage() {
         <div class="flex items-center gap-4">
           <div class="relative h-20 w-20 rounded-3xl border border-cyan-300/40 bg-[#030712] p-1 shadow-[0_0_30px_rgba(6,182,212,.32)]">
             <div class="absolute -right-1 -top-1 h-5 w-5 animate-soft-pulse rounded-full bg-[#06B6D4] drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]"></div>
-            <img class="h-full w-full rounded-[1.25rem] object-cover" alt="用户头像" src="${escapeHtml(currentUser.avatar || userProfile.avatar)}">
+            <img class="h-full w-full rounded-[1.25rem] object-cover" alt="用户头像" src="${escapeHtml(safeImageUrl(currentUser.avatar || userProfile.avatar, `${currentUser.nickname || '用户'}头像`))}">
           </div>
           <div>
             <p class="text-xs text-[#9CA3AF]">Lv. ${currentUser.level || 1} ${userProfile.levelName}</p>
@@ -703,11 +714,10 @@ openEditProfileDrawer = function openProfileFormDrawer() {
       </div>
       <div class="mt-5 space-y-3">
         <div class="flex items-center gap-4 rounded-2xl border border-[#1F2937] bg-[#030712]/70 p-4">
-          <img class="h-16 w-16 rounded-2xl object-cover" src="${escapeHtml(currentUser.avatar || userProfile.avatar)}" alt="头像预览">
+          <img class="h-16 w-16 rounded-2xl object-cover" src="${escapeHtml(safeImageUrl(currentUser.avatar || userProfile.avatar, `${currentUser.nickname || '用户'}头像`))}" alt="头像预览">
           <label class="flex-1"><span class="mb-2 block text-sm text-[#9CA3AF]">上传头像</span><input name="avatar" type="file" accept="image/*" class="w-full text-sm text-[#F9FAFB]"></label>
         </div>
         <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">账号名</span><input name="username" value="${escapeHtml(currentUser.username || '')}" pattern="[A-Za-z0-9_]{3,24}" class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
-        <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">绑定邮箱</span><input name="email" type="email" value="${escapeHtml(currentUser.email || '')}" class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
         <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">昵称</span><input name="nickname" value="${escapeHtml(currentUser.nickname)}" required class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
         <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">个性签名</span><textarea name="bio" rows="4" class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50">${escapeHtml(currentUser.bio || '')}</textarea></label>
       </div>
@@ -720,24 +730,15 @@ openEditProfileDrawer = function openProfileFormDrawer() {
   const profileForm = document.getElementById('profile-form');
   const avatarInput = profileForm.avatar;
   const avatarPreview = avatarInput?.closest('div')?.querySelector('img');
-  let previewAvatarUrl = '';
-  const revokePreviewAvatarUrl = () => {
-    if (previewAvatarUrl) {
-      URL.revokeObjectURL(previewAvatarUrl);
-      previewAvatarUrl = '';
-    }
-  };
   avatarInput?.addEventListener('change', () => {
     const avatarFile = avatarInput.files?.[0];
-    revokePreviewAvatarUrl();
     if (!avatarFile || !avatarPreview) return;
-    previewAvatarUrl = URL.createObjectURL(avatarFile);
-    avatarPreview.src = previewAvatarUrl;
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      if (typeof reader.result === 'string') avatarPreview.src = reader.result;
+    });
+    reader.readAsDataURL(avatarFile);
   });
-  profileForm.querySelectorAll('.drawer-close').forEach((button) => {
-    button.addEventListener('click', revokePreviewAvatarUrl);
-  });
-  document.getElementById('drawer-backdrop')?.addEventListener('click', revokePreviewAvatarUrl, { once: true });
   profileForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = event.target;
@@ -755,14 +756,12 @@ openEditProfileDrawer = function openProfileFormDrawer() {
       method: 'PUT',
       body: JSON.stringify({
         username: form.username.value.trim(),
-        email: form.email.value.trim(),
         nickname: form.nickname.value.trim(),
         bio: form.bio.value.trim()
       })
     });
     await refreshAll();
     await loadAuthMe().catch(() => {});
-    revokePreviewAvatarUrl();
     showToast('资料已保存', 'success');
     closeDrawer();
   });
@@ -914,9 +913,8 @@ async function loadAuthenticatedApp(options = {}) {
 }
 
 function bindAuthenticatedControls() {
-  if (!currentUser || searchBound) return;
-  bindSearchControls();
-  searchBound = true;
+  if (!currentUser) return;
+  window.TravelGlowShell?.bindAuthenticatedPageControls?.();
 }
 
 window.TravelGlowAccount = {

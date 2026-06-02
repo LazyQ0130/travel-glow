@@ -1,14 +1,13 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
-const path = require('path');
 const { z } = require('zod');
 const prisma = require('../db');
 const auth = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const rateLimit = require('../middleware/rate-limit');
 const { writeAuditLog } = require('../audit');
-const { uploadAvatar, uploadDir, deleteLocalUpload, validateUploadedFiles } = require('../upload');
+const { uploadAvatar, localUploadPath, deleteLocalUpload, validateUploadedFiles } = require('../upload');
 const { publicUser, ensureUserSettings } = require('../user-utils');
 const { buildStats } = require('./stats');
 const { createEmailCode, verifyEmailCode, normalizeEmail, isValidEmail } = require('../email-verification');
@@ -28,8 +27,7 @@ const emailAddressSchema = z.string()
 const profileSchema = z.object({
   username: z.string().trim().min(3).max(24).regex(/^[a-zA-Z0-9_]+$/).optional(),
   nickname: z.string().trim().min(1).max(30).optional(),
-  bio: z.string().trim().max(160).optional(),
-  email: z.union([z.literal(''), emailAddressSchema]).optional()
+  bio: z.string().trim().max(160).optional()
 });
 
 const passwordSchema = z.object({
@@ -90,23 +88,20 @@ function pickSettings(body) {
   }, {});
 }
 
-async function folderSize(dir) {
-  let total = 0;
-  const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      total += await folderSize(fullPath);
-    } else {
-      total += (await fs.promises.stat(fullPath)).size;
-    }
-  }
-  return total;
-}
-
 function formatBytes(bytes) {
   if (!bytes) return '0 MB';
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+async function localUploadFileSize(imageUrl) {
+  const filePath = localUploadPath(imageUrl);
+  if (!filePath) return 0;
+  try {
+    const stat = await fs.promises.stat(filePath);
+    return stat.isFile() ? stat.size : 0;
+  } catch {
+    return 0;
+  }
 }
 
 async function assertCurrentPassword(user, password, code = 'INVALID_PASSWORD') {
@@ -136,14 +131,13 @@ router.get('/profile', auth, async (req, res, next) => {
 
 router.put('/profile', auth, writeLimiter, validate(profileSchema), async (req, res, next) => {
   try {
-    const { username, nickname, bio, email } = req.body;
+    const { username, nickname, bio } = req.body;
     const user = await prisma.user.update({
       where: { id: req.user.id },
       data: {
         ...(username !== undefined ? { username: String(username).trim().toLowerCase() } : {}),
         ...(nickname !== undefined ? { nickname } : {}),
-        ...(bio !== undefined ? { bio } : {}),
-        ...(email !== undefined ? { email: email ? String(email).trim().toLowerCase() : null, emailVerifiedAt: email ? new Date() : null } : {})
+        ...(bio !== undefined ? { bio } : {})
       }
     });
     const settings = await ensureUserSettings(req.user.id);
@@ -274,11 +268,16 @@ router.put('/settings', auth, writeLimiter, validate(settingsSchema), async (req
 
 router.get('/storage', auth, async (req, res, next) => {
   try {
-    const [photoCount, checkinCount, uploadFolderSize] = await Promise.all([
+    const [photoCount, checkinCount, photoStorage, avatarStorage] = await Promise.all([
       prisma.photo.count({ where: activeWhere({ userId: req.user.id }) }),
       prisma.checkin.count({ where: activeWhere({ userId: req.user.id }) }),
-      folderSize(uploadDir).catch(() => 0)
+      prisma.photo.aggregate({
+        where: activeWhere({ userId: req.user.id }),
+        _sum: { size: true }
+      }),
+      localUploadFileSize(req.user.avatar)
     ]);
+    const uploadFolderSize = (photoStorage._sum.size || 0) + avatarStorage;
     res.json({
       photoCount,
       checkinCount,

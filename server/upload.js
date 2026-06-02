@@ -218,6 +218,7 @@ module.exports = {
   uploadAvatar: { single: uploadAvatarSingle },
   uploadDir,
   avatarDir,
+  localUploadPath,
   deleteLocalUpload,
   imageCompressionConfig,
   validateImageBuffer,

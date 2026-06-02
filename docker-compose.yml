@@ -6,7 +6,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: "file:/data/dev.db"
+      DATABASE_URL: "file:/data/travel-glow.db"
       JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET before starting compose}"
       CORS_ORIGINS: "http://localhost:3000"
       TRUST_PROXY: "false"
@@ -20,22 +20,19 @@ services:
       REDIS_CONNECT_TIMEOUT_MS: "${REDIS_CONNECT_TIMEOUT_MS:-1000}"
       REDIS_COMMAND_TIMEOUT_MS: "${REDIS_COMMAND_TIMEOUT_MS:-500}"
       REDIS_FAILURE_COOLDOWN_MS: "${REDIS_FAILURE_COOLDOWN_MS:-30000}"
-      EMAIL_PROVIDER: "${EMAIL_PROVIDER:-mock}"
-      SMTP_HOST: "${SMTP_HOST:-}"
+      EMAIL_PROVIDER: "${EMAIL_PROVIDER:?Set EMAIL_PROVIDER=smtp before starting production compose}"
+      SMTP_HOST: "${SMTP_HOST:?Set SMTP_HOST before starting production compose}"
       SMTP_PORT: "${SMTP_PORT:-587}"
       SMTP_SECURE: "${SMTP_SECURE:-false}"
-      SMTP_USER: "${SMTP_USER:-}"
-      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
-      SMTP_FROM: "${SMTP_FROM:-}"
+      SMTP_USER: "${SMTP_USER:?Set SMTP_USER before starting production compose}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:?Set SMTP_PASSWORD before starting production compose}"
+      SMTP_FROM: "${SMTP_FROM:?Set SMTP_FROM before starting production compose}"
       SMTP_TIMEOUT_MS: "${SMTP_TIMEOUT_MS:-10000}"
       RUN_MIGRATIONS_ON_START: "${RUN_MIGRATIONS_ON_START:-true}"
-      POSTGRES_DATABASE_URL: "postgresql://travel_glow:travel_glow@postgres:5432/travel_glow?schema=public"
     volumes:
       - travel_glow_uploads:/app/server/uploads
       - travel_glow_data:/data
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -44,22 +41,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
-
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: travel_glow
-      POSTGRES_USER: travel_glow
-      POSTGRES_PASSWORD: travel_glow
-    ports:
-      - "5432:5432"
-    volumes:
-      - travel_glow_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U travel_glow -d travel_glow"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -76,5 +57,4 @@ services:
 volumes:
   travel_glow_uploads:
   travel_glow_data:
-  travel_glow_pgdata:
   travel_glow_redisdata:

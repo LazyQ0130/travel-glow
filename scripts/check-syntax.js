@@ -32,6 +32,7 @@ const nodeFiles = [
   'server/routes/map.js',
   'scripts/backup.js',
   'scripts/cleanup-logs.js',
+  'scripts/ensure-sqlite-db.js',
   'public/account-security.js',
   'public/me-app.js',
   'prisma/seed.js',

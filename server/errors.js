@@ -13,6 +13,13 @@ class AppError extends Error {
 }
 
 function errorResponse(error) {
+  if (error.code === 'EBADCSRFTOKEN') {
+    return {
+      statusCode: 403,
+      body: { message: 'Invalid CSRF token.', code: 'CSRF_TOKEN_INVALID' }
+    };
+  }
+
   if (error.type === 'entity.too.large') {
     return {
       statusCode: 413,
