@@ -12,6 +12,12 @@
 
     document.addEventListener('error', (event) => {
       if (event.target instanceof HTMLImageElement) {
+        if (event.target.dataset.profile === 'home-avatar' && !event.target.dataset.fallbackApplied) {
+          event.target.dataset.fallbackApplied = 'true';
+          event.target.style.display = '';
+          event.target.src = imagePlaceholder(event.target.alt || '用户头像');
+          return;
+        }
         event.target.style.display = 'none';
       }
     }, true);
@@ -49,7 +55,7 @@
       if (url.startsWith('/') || url.startsWith('data:')) return true;
       try {
         const parsed = new URL(url, window.location.origin);
-        return parsed.origin === window.location.origin || parsed.hostname.endsWith('.example.com');
+        return parsed.origin === window.location.origin || parsed.protocol === 'https:';
       } catch (error) {
         return false;
       }
