@@ -139,6 +139,23 @@ test('unsafe requests require a valid CSRF token', async () => {
   assert.equal(body.code, 'CSRF_TOKEN_INVALID');
 });
 
+test('unsafe requests reject an invalid CSRF token', async () => {
+  await ensureCsrfToken();
+  const response = await fetch(`${baseUrl}/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Cookie: csrfCookie,
+      'X-CSRF-Token': 'invalid-token'
+    },
+    body: JSON.stringify({ identifier: 'bad-csrf', password: 'TravelGlow!2026' })
+  });
+  const body = await json(response);
+
+  assert.equal(response.status, 403);
+  assert.equal(body.code, 'CSRF_TOKEN_INVALID');
+});
+
 test('registration rejects weak passwords before creating an account', async () => {
   const response = await request('/auth/register', {
     method: 'POST',

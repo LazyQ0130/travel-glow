@@ -312,7 +312,7 @@ const AccountSecurity = (() => {
             <div class="h-2 overflow-hidden rounded-full bg-[#030712]">
               <div id="password-strength-bar" class="h-full w-0 rounded-full bg-rose-400 transition-all"></div>
             </div>
-            <p id="password-strength-text" class="mt-2 text-xs text-[#9CA3AF]">至少 10 位，包含大小写字母、数字和符号。</p>
+            <p id="password-strength-text" class="mt-2 text-xs text-[#9CA3AF]">8 到 72 位；小写、大写、数字、符号中至少 3 类；避免常见弱密码。</p>
           </div>
           ${field('确认新密码', 'confirmPassword', 'type="password" autocomplete="new-password" required')}
           <label class="flex items-center justify-between rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-sm text-[#F9FAFB]">
@@ -332,7 +332,7 @@ const AccountSecurity = (() => {
       const colors = ['bg-rose-400', 'bg-rose-400', 'bg-amber-300', 'bg-cyan-300', 'bg-emerald-300', 'bg-emerald-300'];
       bar.className = `h-full rounded-full transition-all ${colors[score]}`;
       bar.style.width = `${score * 20}%`;
-      text.textContent = score >= 5 ? '密码强度高。' : '至少 10 位，包含大小写字母、数字和符号。';
+      text.textContent = score >= 5 ? '密码强度高。' : '8 到 72 位；小写、大写、数字、符号中至少 3 类；避免常见弱密码。';
     });
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
