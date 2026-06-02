@@ -96,7 +96,10 @@
         item.textContent = `你好，旅行者 ${nickname}`;
       });
       document.querySelectorAll('[data-profile="home-avatar"]').forEach((item) => {
-        if (avatar) item.src = avatar;
+        if (!avatar) return;
+        item.dataset.fallbackApplied = '';
+        item.style.display = '';
+        item.src = avatar;
       });
     }
 
@@ -177,6 +180,7 @@
         const page = document.getElementById(`page-${name}`);
         if (page && html) page.innerHTML = html;
       });
+      syncHomeProfile();
     }
 
     function setTab(tab, options = {}) {
@@ -692,7 +696,7 @@
 
       setStatText('home-total-checkins', `${stats.totalCheckins} 次打卡`);
       setStatText('home-china-provinces', `${stats.china.checkedProvinceCount} / ${stats.china.totalProvinceCount}`);
-      setStatText('home-china-cities', `已打卡 ${stats.china.checkedCityCount} 个城市/地区`);
+      setStatText('home-china-cities', `已打卡 ${stats.china.checkedProvinceCount} 个省份`);
       setStatText('home-china-progress', stats.china.progressText);
       setStatBar('home-china-progress', stats.china.progress);
       setStatText('home-world-countries', `${stats.world.checkedCountryCount} / ${stats.world.totalCountryCount}`);
@@ -1507,7 +1511,7 @@
       userStats = buildUserStats();
       setStatText('home-total-checkins', `${stats.totalCheckins} 次打卡`);
       setStatText('home-china-provinces', `${stats.china.checkedProvinceCount} / ${stats.china.totalProvinceCount}`);
-      setStatText('home-china-cities', `已打卡 ${stats.china.checkedCityCount} 个城市/地区`);
+      setStatText('home-china-cities', `已打卡 ${stats.china.checkedProvinceCount} 个省份`);
       setStatText('home-china-progress', stats.china.progressText);
       setStatBar('home-china-progress', stats.china.progress);
       setStatText('home-world-countries', `${stats.world.checkedCountryCount} / ${stats.world.totalCountryCount}`);
@@ -2127,7 +2131,8 @@
     // 登录入口由 me-app.js 接管，未登录时不自动注入任何账号。
     window.TravelGlowShell = {
       restoreAuthenticatedPages,
-      bindAuthenticatedPageControls
+      bindAuthenticatedPageControls,
+      syncHomeProfile
     };
     window.TravelGlowImages = {
       imagePlaceholder,

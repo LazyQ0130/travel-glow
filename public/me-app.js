@@ -34,6 +34,14 @@ function safeImageUrl(value = '', label = '旅光图片') {
     || '';
 }
 
+function syncShellProfile(profile = userProfile) {
+  if (window.TravelGlowShell?.syncHomeProfile) {
+    window.TravelGlowShell.syncHomeProfile(profile);
+  } else if (typeof syncHomeProfile === 'function') {
+    syncHomeProfile(profile);
+  }
+}
+
 function showToast(message, tone = 'info') {
   const palette = {
     info: 'border-cyan-300/30 bg-cyan-400/10 text-cyan-100',
@@ -195,7 +203,7 @@ async function loadAuthMe(options = {}) {
     level: currentUser.level || 1,
     exp: currentUser.exp || 0
   });
-  syncHomeProfile();
+  syncShellProfile();
   return true;
 }
 
@@ -210,7 +218,7 @@ async function loadProfile(options = {}) {
     level: profile.level || 1,
     exp: profile.exp || 0
   });
-  syncHomeProfile();
+  syncShellProfile();
 }
 
 async function loadOverviewStats(options = {}) {
@@ -714,7 +722,7 @@ openEditProfileDrawer = function openProfileFormDrawer() {
       </div>
       <div class="mt-5 space-y-3">
         <div class="flex items-center gap-4 rounded-2xl border border-[#1F2937] bg-[#030712]/70 p-4">
-          <img class="h-16 w-16 rounded-2xl object-cover" src="${escapeHtml(safeImageUrl(currentUser.avatar || userProfile.avatar, `${currentUser.nickname || '用户'}头像`))}" alt="头像预览">
+          <img data-avatar-preview class="h-16 w-16 rounded-2xl object-cover" src="${escapeHtml(safeImageUrl(currentUser.avatar || userProfile.avatar, `${currentUser.nickname || '用户'}头像`))}" alt="头像预览">
           <label class="flex-1"><span class="mb-2 block text-sm text-[#9CA3AF]">上传头像</span><input name="avatar" type="file" accept="image/*" class="w-full text-sm text-[#F9FAFB]"></label>
         </div>
         <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">账号名</span><input name="username" value="${escapeHtml(currentUser.username || '')}" pattern="[A-Za-z0-9_]{3,24}" class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
@@ -729,7 +737,7 @@ openEditProfileDrawer = function openProfileFormDrawer() {
   `);
   const profileForm = document.getElementById('profile-form');
   const avatarInput = profileForm.avatar;
-  const avatarPreview = avatarInput?.closest('div')?.querySelector('img');
+  const avatarPreview = profileForm.querySelector('[data-avatar-preview]');
   avatarInput?.addEventListener('change', () => {
     const avatarFile = avatarInput.files?.[0];
     if (!avatarFile || !avatarPreview) return;
@@ -750,7 +758,7 @@ openEditProfileDrawer = function openProfileFormDrawer() {
       const avatarResult = await apiRequest('/user/avatar', { method: 'POST', body: avatarData, headers: {} });
       currentUser = avatarResult.user || currentUser;
       userProfile.avatar = avatarResult.avatar || currentUser?.avatar || userProfile.avatar;
-      syncHomeProfile();
+      syncShellProfile();
     }
     await apiRequest('/user/profile', {
       method: 'PUT',

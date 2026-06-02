@@ -159,7 +159,7 @@ const AccountSecurity = (() => {
       body: `
         ${panel(`
           <div class="flex items-center gap-4">
-            <img class="h-20 w-20 rounded-3xl border border-cyan-300/30 object-cover" src="${escape(current.avatar || userProfile.avatar)}" alt="用户头像">
+            <img data-avatar-preview class="h-20 w-20 rounded-3xl border border-cyan-300/30 object-cover" src="${escape(current.avatar || userProfile.avatar)}" alt="用户头像">
             <div class="min-w-0 flex-1">
               <p class="truncate text-xl font-semibold text-[#F9FAFB]">${escape(current.nickname || '旅光用户')}</p>
               <p class="mt-1 truncate text-sm text-[#9CA3AF]">${escape(current.username || '未设置账号名')}</p>
@@ -199,22 +199,16 @@ const AccountSecurity = (() => {
     });
     const form = document.getElementById('profile-edit-form');
     const avatarInput = form.avatar;
-    const avatarPreview = root()?.querySelector('img[alt]');
-    let previewAvatarUrl = '';
-    const revokePreviewAvatarUrl = () => {
-      if (previewAvatarUrl) {
-        URL.revokeObjectURL(previewAvatarUrl);
-        previewAvatarUrl = '';
-      }
-    };
+    const avatarPreview = root()?.querySelector('[data-avatar-preview]');
     avatarInput?.addEventListener('change', () => {
       const avatarFile = avatarInput.files?.[0];
-      revokePreviewAvatarUrl();
       if (!avatarFile || !avatarPreview) return;
-      previewAvatarUrl = URL.createObjectURL(avatarFile);
-      avatarPreview.src = previewAvatarUrl;
+      const reader = new FileReader();
+      reader.addEventListener('load', () => {
+        if (typeof reader.result === 'string') avatarPreview.src = reader.result;
+      });
+      reader.readAsDataURL(avatarFile);
     });
-    root()?.querySelector('.account-back')?.addEventListener('click', revokePreviewAvatarUrl);
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       await submitForm(form, async () => {
@@ -225,7 +219,11 @@ const AccountSecurity = (() => {
           const avatarResult = await app().apiRequest('/user/avatar', { method: 'POST', body: avatarData, headers: {} });
           app().setUser(avatarResult.user || app().getUser());
           userProfile.avatar = avatarResult.avatar || userProfile.avatar;
-          syncHomeProfile();
+          if (window.TravelGlowShell?.syncHomeProfile) {
+            window.TravelGlowShell.syncHomeProfile(userProfile);
+          } else if (typeof syncHomeProfile === 'function') {
+            syncHomeProfile();
+          }
         }
         await app().apiRequest('/user/profile', {
           method: 'PUT',
@@ -235,7 +233,6 @@ const AccountSecurity = (() => {
           })
         });
         await app().refreshAll();
-        revokePreviewAvatarUrl();
         app().showToast('资料已保存', 'success');
         openProfile();
       });
