@@ -75,22 +75,55 @@ function showRequestError(error, fallbackMessage = '操作失败') {
 
 const AUTH_PUBLIC_PATHS = new Set(['/auth/login', '/auth/login/email', '/auth/register', '/auth/email/send']);
 const REGISTER_PASSWORD_MESSAGE = '密码需至少 8 位，并且在大小写字母、数字、特殊符号中至少包含 3 类';
+const API_ERROR_MESSAGES = {
+  ACCOUNT_LOCKED: '账号已被临时锁定，请稍后再试',
+  CHECKIN_NOT_FOUND: '未找到这条打卡记录',
+  CSRF_TOKEN_INVALID: '页面安全校验已失效，请刷新后重试',
+  DATABASE_ERROR: '数据读取失败，请稍后重试',
+  EMAIL_CODE_EXPIRED: '验证码已过期，请重新获取',
+  EMAIL_CODE_INVALID: '验证码输入有误~',
+  EMAIL_CODE_LOCKED: '验证码尝试次数过多，请重新获取',
+  EMAIL_CODE_RATE_LIMITED: '验证码获取过于频繁，请稍后再试',
+  EMAIL_IN_USE: '该邮箱已被其他账号绑定',
+  EMAIL_NOT_REGISTERED: '该邮箱尚未注册，请先注册账号',
+  EMAIL_SEND_FAILED: '验证码发送失败，请稍后重试',
+  INTERNAL_ERROR: '服务暂时不可用，请稍后重试',
+  INVALID_CREDENTIALS: '账号或密码有误',
+  INVALID_CURSOR: '分页参数无效，请刷新后重试',
+  INVALID_EMAIL: '请输入有效且可接收邮件的邮箱地址',
+  INVALID_OLD_PASSWORD: '旧密码不正确',
+  INVALID_PASSWORD: '密码不正确',
+  INVALID_UPLOAD_SIGNATURE: '上传的图片内容与文件类型不匹配',
+  INVALID_UPLOAD_TYPE: '仅支持 JPG、PNG、GIF 和 WEBP 图片',
+  NOT_FOUND: '请求的内容不存在',
+  PAYLOAD_TOO_LARGE: '提交内容过大，请减少内容后重试',
+  PHOTO_NOT_FOUND: '未找到这张照片',
+  RATE_LIMITED: '请求过于频繁，请稍后再试',
+  REGION_NOT_FOUND: '未找到选择的地区',
+  REQUEST_ERROR: '请求失败，请稍后重试',
+  SESSION_NOT_FOUND: '登录设备不存在或已退出',
+  SESSION_REQUIRED: '登录状态已失效，请重新登录',
+  SESSION_REVOKED: '登录状态已失效，请重新登录',
+  UNIQUE_CONSTRAINT: '账号名或邮箱已被使用',
+  UPLOAD_REQUIRED: '请先上传图片',
+  UPLOAD_TOO_LARGE: '上传的图片过大',
+  UPLOAD_TOO_MANY_FILES: '上传图片数量过多',
+  VALIDATION_ERROR: '输入内容有误，请检查后重试',
+  WEAK_PASSWORD: REGISTER_PASSWORD_MESSAGE
+};
 
 function shouldHandleAuthExpired(path, response) {
   return response.status === 401 && !AUTH_PUBLIC_PATHS.has(path);
 }
 
 function getApiErrorMessage(path, data, fallbackMessage) {
-  if (data.code === 'EMAIL_IN_USE') return '该邮箱已被其他账号绑定';
-  if (data.code === 'EMAIL_CODE_EXPIRED') return '验证码已过期，请重新获取';
-  if (data.code === 'WEAK_PASSWORD') return REGISTER_PASSWORD_MESSAGE;
-
   const isEmailCodeError = (path === '/auth/login/email' || path === '/auth/register')
     && (
       data.code === 'EMAIL_CODE_INVALID'
       || (data.code === 'VALIDATION_ERROR' && data.details?.fieldErrors?.code)
     );
   if (isEmailCodeError) return '验证码输入有误~';
+  if (data.code && API_ERROR_MESSAGES[data.code]) return API_ERROR_MESSAGES[data.code];
   return data.message || fallbackMessage;
 }
 
@@ -180,7 +213,7 @@ async function apiRequest(path, options = {}) {
     throw error;
   }
   if (!response.ok) {
-    const error = buildApiError('Request failed');
+    const error = buildApiError('请求失败，请稍后重试');
     if (!suppressErrorToast) {
       showToast(error.message, 'error');
       error.toastShown = true;

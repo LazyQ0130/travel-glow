@@ -151,8 +151,9 @@ const AccountSecurity = (() => {
     app()?.renderMePage?.();
   }
 
-  function openProfile() {
+  async function openProfile() {
     if (!ensureAuth()) return;
+    await app()?.loadAuthMe?.({ suppressErrorToast: true }).catch(() => {});
     const current = user();
     shell({
       title: '账号资料',

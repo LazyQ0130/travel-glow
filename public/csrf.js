@@ -19,7 +19,7 @@
     const response = await fetch(`${API_BASE}/csrf-token`, { credentials: 'same-origin' });
     capture(response);
     if (!response.ok) {
-      throw new Error('Unable to initialize CSRF protection.');
+      throw new Error('页面安全校验初始化失败，请刷新后重试。');
     }
     const body = await response.json().catch(() => ({}));
     csrfToken = csrfToken || body.csrfToken || null;
