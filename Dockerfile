@@ -11,13 +11,14 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV RUN_MIGRATIONS_ON_START=true
 
-RUN addgroup -S travelglow && adduser -S travelglow -G travelglow
+RUN addgroup -S travelglow && adduser -S travelglow -G travelglow \
+  && mkdir -p /data /app/backups /app/logs
 
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate \
   && chmod +x scripts/start.sh \
-  && chown -R travelglow:travelglow /app
+  && chown -R travelglow:travelglow /app /data
 
 USER travelglow
 

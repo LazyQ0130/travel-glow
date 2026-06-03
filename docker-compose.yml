@@ -1,16 +1,25 @@
 services:
   app:
     build: .
+    restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       NODE_ENV: production
       PORT: 3000
+      APP_URL: "${APP_URL:?Set APP_URL before starting production compose}"
       DATABASE_URL: "file:/data/travel-glow.db"
       JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET before starting compose}"
-      CORS_ORIGINS: "http://localhost:3000"
-      TRUST_PROXY: "false"
+      CORS_ORIGINS: "${CORS_ORIGINS:?Set CORS_ORIGINS to your production origin}"
+      TRUST_PROXY: "${TRUST_PROXY:-true}"
       LOG_LEVEL: "info"
+      LOG_DIR: "/app/logs"
+      LOG_FILE: "app.log"
+      LOG_MAX_SIZE: "${LOG_MAX_SIZE:-10m}"
+      LOG_RETENTION_DAYS: "${LOG_RETENTION_DAYS:-30}"
+      BACKUP_DIR: "/app/backups"
+      BACKUP_RETENTION_DAYS: "${BACKUP_RETENTION_DAYS:-30}"
+      UPLOADS_DIR: "/app/server/uploads"
       RATE_LIMIT_REDIS_ENABLED: "${RATE_LIMIT_REDIS_ENABLED:-true}"
       REDIS_HOST: "${REDIS_HOST:-redis}"
       REDIS_PORT: "${REDIS_PORT:-6379}"
@@ -32,6 +41,8 @@ services:
     volumes:
       - travel_glow_uploads:/app/server/uploads
       - travel_glow_data:/data
+      - travel_glow_backups:/app/backups
+      - travel_glow_logs:/app/logs
     depends_on:
       redis:
         condition: service_healthy
@@ -44,8 +55,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
     volumes:
       - travel_glow_redisdata:/data
     healthcheck:
@@ -57,4 +67,6 @@ services:
 volumes:
   travel_glow_uploads:
   travel_glow_data:
+  travel_glow_backups:
+  travel_glow_logs:
   travel_glow_redisdata:

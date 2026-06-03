@@ -8,6 +8,7 @@ dotenv.config({ path: path.join(root, '.env') });
 
 const backupDir = path.resolve(root, process.env.BACKUP_DIR || './backups');
 const databaseUrl = process.env.DATABASE_URL || 'file:./dev.db';
+const uploadsDir = path.resolve(root, process.env.UPLOADS_DIR || './server/uploads');
 const retentionDays = Number(process.env.BACKUP_RETENTION_DAYS || 30);
 
 function timestamp() {
@@ -18,7 +19,6 @@ function sqlitePathFromUrl(url) {
   const rawPath = url.replace(/^file:/, '').split('?')[0];
   if (path.isAbsolute(rawPath)) return rawPath;
 
-  // Prisma 的 SQLite 相对路径通常以 schema.prisma 所在目录为基准。
   const candidates = [
     path.resolve(root, rawPath),
     path.resolve(root, 'prisma', rawPath)
@@ -40,6 +40,25 @@ async function backupSqlite() {
   return target;
 }
 
+async function backupUploads() {
+  if (!fs.existsSync(uploadsDir)) return null;
+
+  const target = path.join(backupDir, `uploads-${timestamp()}.tar.gz`);
+  const result = spawnSync('tar', ['-czf', target, '-C', path.dirname(uploadsDir), path.basename(uploadsDir)], {
+    cwd: root,
+    encoding: 'utf8'
+  });
+
+  if (result.error) {
+    throw new Error(`tar failed: ${result.error.message}. Install tar or set UPLOADS_DIR to an existing upload directory.`);
+  }
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || 'tar failed.');
+  }
+
+  return target;
+}
+
 function backupPostgres() {
   const target = path.join(backupDir, `postgres-${timestamp()}.dump`);
   const result = spawnSync('pg_dump', ['--dbname', databaseUrl, '--file', target, '--format', 'custom'], {
@@ -48,16 +67,20 @@ function backupPostgres() {
   });
 
   if (result.error) {
-    throw new Error(`pg_dump 执行失败：${result.error.message}`);
+    throw new Error(`pg_dump failed: ${result.error.message}`);
   }
   if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || 'pg_dump 执行失败。');
+    throw new Error(result.stderr || result.stdout || 'pg_dump failed.');
   }
 
   return target;
 }
 
 async function cleanupOldBackups() {
+  if (!Number.isFinite(retentionDays) || retentionDays < 1) {
+    throw new Error('BACKUP_RETENTION_DAYS must be a positive number.');
+  }
+
   const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
   const entries = await fs.promises.readdir(backupDir, { withFileTypes: true });
   const removed = [];
@@ -68,7 +91,6 @@ async function cleanupOldBackups() {
     const filePath = path.join(backupDir, entry.name);
     const stat = await fs.promises.stat(filePath);
     if (stat.mtimeMs < cutoff) {
-      // 遵守项目约束：只逐个删除明确路径的旧备份文件。
       await fs.promises.unlink(filePath);
       removed.push(filePath);
     }
@@ -80,17 +102,22 @@ async function cleanupOldBackups() {
 async function main() {
   await ensureBackupDir();
 
-  let backupFile;
+  const created = [];
   if (databaseUrl.startsWith('file:')) {
-    backupFile = await backupSqlite();
+    created.push(await backupSqlite());
   } else if (databaseUrl.startsWith('postgresql://') || databaseUrl.startsWith('postgres://')) {
-    backupFile = backupPostgres();
+    created.push(backupPostgres());
   } else {
-    throw new Error('暂不支持当前 DATABASE_URL，仅支持 SQLite file: 和 PostgreSQL URL。');
+    throw new Error('Unsupported DATABASE_URL. Only SQLite file: and PostgreSQL URLs are supported.');
+  }
+
+  const uploadsBackup = await backupUploads();
+  if (uploadsBackup) {
+    created.push(uploadsBackup);
   }
 
   const removed = await cleanupOldBackups();
-  console.log(`Backup created: ${backupFile}`);
+  console.log(`Backups created: ${created.join(', ')}`);
   console.log(`Old backups removed: ${removed.length}`);
 }
 

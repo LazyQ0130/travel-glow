@@ -2,6 +2,10 @@
 
 Use `.env.example` as the template for production configuration.
 
+For the first small-scale public test, keep SQLite and follow
+`docs/SMALL_SCALE_SQLITE_DEPLOYMENT.md`. PostgreSQL is optional for a later
+growth phase, not required for the initial rollout.
+
 ## Required Environment
 
 ```env
@@ -29,7 +33,10 @@ LOG_LEVEL=info
 LOG_DIR=./logs
 LOG_FILE=app.log
 LOG_MAX_SIZE=10m
-LOG_MAX_FILES=30
+LOG_RETENTION_DAYS=30
+BACKUP_DIR=/app/backups
+BACKUP_RETENTION_DAYS=30
+UPLOADS_DIR=/app/server/uploads
 RUN_MIGRATIONS_ON_START=true
 ```
 
@@ -86,10 +93,11 @@ RUN_MIGRATIONS_ON_START=false
 2. If using Gmail, enable 2FA and create an App Password.
 3. If using QQ Mail or 163 Mail, enable SMTP and create an authorization code.
 4. Send a real verification email before release and confirm delivery.
-5. Configure PostgreSQL database, credentials, backup, and network access rules.
-6. Configure Nginx reverse proxy.
-7. Configure HTTPS certificate and renewal.
-8. Configure PM2 or container orchestration restart policy and log collection.
+5. Configure Nginx reverse proxy.
+6. Configure HTTPS certificate and renewal.
+7. Run `docker compose exec app npm run backup` and confirm the SQLite and
+   upload backups are created.
+8. Configure a daily backup schedule and copy important backups off the server.
 9. Configure firewall rules and expose only required ports.
 
 ## Logging
