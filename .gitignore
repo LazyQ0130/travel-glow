@@ -3,6 +3,7 @@ node_modules/
 backups/
 coverage/
 logs/
+.codex-screenshots/
 *.log
 npm-debug.log*
 prisma/dev.db
