@@ -1286,7 +1286,8 @@
     });
 
     const API_BASE = '/api';
-    const TOKEN_KEY = 'travel-glow-token';
+    const AUTH_TOKEN_KEY = 'travel_glow_token';
+    const LEGACY_TOKEN_KEY = 'travel-glow-token';
 
     let appStats = null;
     let appPhotos = [];
@@ -1296,11 +1297,16 @@
     let documentSearchDismissBound = false;
 
     function getToken() {
-      return localStorage.getItem(TOKEN_KEY);
+      const token = localStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem(LEGACY_TOKEN_KEY);
+      if (token && !localStorage.getItem(LEGACY_TOKEN_KEY)) {
+        localStorage.setItem(LEGACY_TOKEN_KEY, token);
+      }
+      return token;
     }
 
     function setToken(token) {
-      localStorage.setItem(TOKEN_KEY, token);
+      localStorage.setItem(AUTH_TOKEN_KEY, token);
+      localStorage.setItem(LEGACY_TOKEN_KEY, token);
     }
 
     async function apiFetch(path, options = {}) {
