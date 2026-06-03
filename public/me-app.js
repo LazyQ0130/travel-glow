@@ -192,10 +192,12 @@ function resetAuthenticatedData() {
 
 function setAppShellVisible(visible) {
   document.querySelectorAll('.page').forEach((page) => {
-    page.classList.toggle('hidden', !visible);
+    page.style.display = visible ? '' : 'none';
   });
-  document.querySelector('nav')?.classList.toggle('hidden', !visible);
-  document.getElementById('fab')?.classList.toggle('hidden', !visible);
+  const nav = document.querySelector('nav');
+  const fab = document.getElementById('fab');
+  if (nav) nav.style.display = visible ? '' : 'none';
+  if (fab) fab.style.display = visible ? '' : 'none';
 }
 
 function ensureAuthGate() {
