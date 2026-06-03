@@ -2067,10 +2067,10 @@
             <div class="block">
               <span class="mb-2 block text-sm text-[#9CA3AF]">打卡照片</span>
               <div class="rounded-2xl border border-dashed border-cyan-400/30 bg-cyan-400/5 p-4">
-                <input id="add-photos" name="photos" type="file" accept="image/*" multiple required class="sr-only">
+                <input id="add-photos" name="photos" type="file" accept="image/*" multiple required style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;">
                 <div class="grid min-h-32 place-items-center text-center">
                   <div>
-                    <button id="choose-photos" type="button" class="rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-8 py-3 font-semibold text-[#030712]">选择图片</button>
+                    <button id="choose-photos" type="button" style="white-space:nowrap;" class="rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-8 py-3 font-semibold text-[#030712]">选择图片</button>
                     <p id="photo-picker-summary" class="mt-3 text-xs text-[#9CA3AF]">支持多选，至少选择 1 张图片</p>
                   </div>
                 </div>
@@ -2112,14 +2112,15 @@
 
         choosePhotosButton.textContent = '重新选择图片';
         photoPickerSummary.textContent = `已选择 ${files.length} 张图片`;
-        photoPreviewGrid.classList.remove('hidden');
+        photoPreviewGrid.className = files.length === 1
+          ? 'mt-4 grid grid-cols-1 gap-2'
+          : 'mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3';
         photoPreviewGrid.innerHTML = files.map((file) => {
           const url = URL.createObjectURL(file);
           photoPreviewUrls.push(url);
           return `
             <div class="overflow-hidden rounded-xl border border-[#1F2937] bg-[#030712]/70">
-              <img src="${url}" alt="${escapeHtml(file.name)}" class="h-24 w-full object-cover">
-              <p class="truncate px-2 py-1 text-[11px] text-[#9CA3AF]">${escapeHtml(file.name)}</p>
+              <img src="${url}" alt="${escapeHtml(file.name)}" class="${files.length === 1 ? 'h-56' : 'h-32'} w-full object-cover">
             </div>
           `;
         }).join('');
