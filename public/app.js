@@ -2091,16 +2091,26 @@
       const choosePhotosButton = document.getElementById('choose-photos');
       const photoPreviewGrid = document.getElementById('photo-preview-grid');
       const photoPickerSummary = document.getElementById('photo-picker-summary');
-      let photoPreviewUrls = [];
+      let photoPreviewRenderId = 0;
       provinceSelect.innerHTML = chinaRegions.map((region) => `<option value="${escapeHtml(region.id)}">${escapeHtml(region.name)}</option>`).join('');
       continentSelect.innerHTML = worldRegions.map((group, index) => `<option value="${index}">${escapeHtml(group.continent)}</option>`).join('');
 
-      function clearPhotoPreviewUrls() {
-        photoPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
-        photoPreviewUrls = [];
+      function readFileAsDataUrl(file) {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.addEventListener('load', () => resolve(typeof reader.result === 'string' ? reader.result : ''));
+          reader.addEventListener('error', () => resolve(''));
+          reader.readAsDataURL(file);
+        });
       }
-      function renderPhotoPreviews() {
-        clearPhotoPreviewUrls();
+      function clearPhotoPreviews() {
+        photoPreviewRenderId += 1;
+        photoPreviewGrid.classList.add('hidden');
+        photoPreviewGrid.innerHTML = '';
+      }
+      async function renderPhotoPreviews() {
+        const renderId = photoPreviewRenderId + 1;
+        photoPreviewRenderId = renderId;
         const files = Array.from(photoInput.files || []);
         if (!files.length) {
           photoPreviewGrid.classList.add('hidden');
@@ -2115,9 +2125,17 @@
         photoPreviewGrid.className = files.length === 1
           ? 'mt-4 grid grid-cols-1 gap-2'
           : 'mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3';
-        photoPreviewGrid.innerHTML = files.map((file) => {
-          const url = URL.createObjectURL(file);
-          photoPreviewUrls.push(url);
+        const previews = await Promise.all(files.map(async (file) => ({
+          file,
+          url: await readFileAsDataUrl(file)
+        })));
+        if (renderId !== photoPreviewRenderId) {
+          return;
+        }
+        photoPreviewGrid.innerHTML = previews.map(({ file, url }) => {
+          if (!url) {
+            return '';
+          }
           return `
             <div class="overflow-hidden rounded-xl border border-[#1F2937] bg-[#030712]/70">
               <img src="${url}" alt="${escapeHtml(file.name)}" class="${files.length === 1 ? 'h-56' : 'h-32'} w-full object-cover">
@@ -2145,7 +2163,7 @@
       continentSelect.addEventListener('change', syncCountries);
       choosePhotosButton.addEventListener('click', () => photoInput.click());
       photoInput.addEventListener('change', renderPhotoPreviews);
-      document.querySelectorAll('.drawer-close').forEach((button) => button.addEventListener('click', clearPhotoPreviewUrls, { once: true }));
+      document.querySelectorAll('.drawer-close').forEach((button) => button.addEventListener('click', clearPhotoPreviews, { once: true }));
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const formData = new FormData(form);
@@ -2154,7 +2172,7 @@
         formData.delete('scope');
         await apiFetch('/checkins', { method: 'POST', body: formData, headers: {} });
         await refreshAll();
-        clearPhotoPreviewUrls();
+        clearPhotoPreviews();
         closeDrawer();
       });
     };
