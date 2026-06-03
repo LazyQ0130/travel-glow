@@ -2064,7 +2064,19 @@
             <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">标题</span><input name="title" placeholder="例如：杭州西湖打卡" class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></label>
             <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">打卡日期</span><input name="checkinDate" type="date" value="${today}" class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB]"></label>
             <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">备注</span><textarea name="note" rows="4" placeholder="记录这一束旅光" class="w-full rounded-2xl border border-[#1F2937] bg-[#030712]/70 px-4 py-3 text-[#F9FAFB] outline-none focus:border-cyan-400/50"></textarea></label>
-            <label class="block"><span class="mb-2 block text-sm text-[#9CA3AF]">打卡照片</span><input name="photos" type="file" accept="image/*" multiple required class="w-full rounded-2xl border border-dashed border-cyan-400/30 bg-cyan-400/5 px-4 py-6 text-sm text-[#F9FAFB]"></label>
+            <div class="block">
+              <span class="mb-2 block text-sm text-[#9CA3AF]">打卡照片</span>
+              <div class="rounded-2xl border border-dashed border-cyan-400/30 bg-cyan-400/5 p-4">
+                <input id="add-photos" name="photos" type="file" accept="image/*" multiple required class="sr-only">
+                <div class="grid min-h-32 place-items-center text-center">
+                  <div>
+                    <button id="choose-photos" type="button" class="rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-8 py-3 font-semibold text-[#030712]">选择图片</button>
+                    <p id="photo-picker-summary" class="mt-3 text-xs text-[#9CA3AF]">支持多选，至少选择 1 张图片</p>
+                  </div>
+                </div>
+                <div id="photo-preview-grid" class="mt-4 hidden grid grid-cols-3 gap-2 sm:grid-cols-4"></div>
+              </div>
+            </div>
           </div>
           <button class="mt-5 w-full rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-4 font-semibold text-[#030712]" type="submit">保存打卡</button>
         </form>
@@ -2075,9 +2087,43 @@
       const citySelect = document.getElementById('add-city');
       const continentSelect = document.getElementById('add-continent');
       const countrySelect = document.getElementById('add-country');
+      const photoInput = document.getElementById('add-photos');
+      const choosePhotosButton = document.getElementById('choose-photos');
+      const photoPreviewGrid = document.getElementById('photo-preview-grid');
+      const photoPickerSummary = document.getElementById('photo-picker-summary');
+      let photoPreviewUrls = [];
       provinceSelect.innerHTML = chinaRegions.map((region) => `<option value="${escapeHtml(region.id)}">${escapeHtml(region.name)}</option>`).join('');
       continentSelect.innerHTML = worldRegions.map((group, index) => `<option value="${index}">${escapeHtml(group.continent)}</option>`).join('');
 
+      function clearPhotoPreviewUrls() {
+        photoPreviewUrls.forEach((url) => URL.revokeObjectURL(url));
+        photoPreviewUrls = [];
+      }
+      function renderPhotoPreviews() {
+        clearPhotoPreviewUrls();
+        const files = Array.from(photoInput.files || []);
+        if (!files.length) {
+          photoPreviewGrid.classList.add('hidden');
+          photoPreviewGrid.innerHTML = '';
+          photoPickerSummary.textContent = '支持多选，至少选择 1 张图片';
+          choosePhotosButton.textContent = '选择图片';
+          return;
+        }
+
+        choosePhotosButton.textContent = '重新选择图片';
+        photoPickerSummary.textContent = `已选择 ${files.length} 张图片`;
+        photoPreviewGrid.classList.remove('hidden');
+        photoPreviewGrid.innerHTML = files.map((file) => {
+          const url = URL.createObjectURL(file);
+          photoPreviewUrls.push(url);
+          return `
+            <div class="overflow-hidden rounded-xl border border-[#1F2937] bg-[#030712]/70">
+              <img src="${url}" alt="${escapeHtml(file.name)}" class="h-24 w-full object-cover">
+              <p class="truncate px-2 py-1 text-[11px] text-[#9CA3AF]">${escapeHtml(file.name)}</p>
+            </div>
+          `;
+        }).join('');
+      }
       function syncCities() {
         const cityNames = provinceCityCatalog[provinceSelect.value] || [];
         citySelect.innerHTML = cityNames.map((name) => `<option value="${escapeHtml(`city:${provinceSelect.value}:${name}`)}">${escapeHtml(name)}</option>`).join('');
@@ -2096,6 +2142,9 @@
       form.querySelectorAll('[name="scope"]').forEach((item) => item.addEventListener('change', syncScope));
       provinceSelect.addEventListener('change', syncCities);
       continentSelect.addEventListener('change', syncCountries);
+      choosePhotosButton.addEventListener('click', () => photoInput.click());
+      photoInput.addEventListener('change', renderPhotoPreviews);
+      document.querySelectorAll('.drawer-close').forEach((button) => button.addEventListener('click', clearPhotoPreviewUrls, { once: true }));
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const formData = new FormData(form);
@@ -2104,6 +2153,7 @@
         formData.delete('scope');
         await apiFetch('/checkins', { method: 'POST', body: formData, headers: {} });
         await refreshAll();
+        clearPhotoPreviewUrls();
         closeDrawer();
       });
     };
