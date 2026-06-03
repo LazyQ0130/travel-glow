@@ -206,7 +206,7 @@ function ensureAuthGate() {
 
   gate = document.createElement('section');
   gate.id = 'auth-gate';
-  gate.className = 'hidden min-h-[calc(100vh-8rem)] items-center justify-center pb-24';
+  gate.className = 'fixed inset-0 z-20 hidden items-center justify-center overflow-y-auto px-4 py-8';
   document.querySelector('main')?.prepend(gate);
   return gate;
 }
