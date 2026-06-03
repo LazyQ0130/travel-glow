@@ -38,6 +38,7 @@ BACKUP_DIR=/app/backups
 BACKUP_RETENTION_DAYS=30
 UPLOADS_DIR=/app/server/uploads
 RUN_MIGRATIONS_ON_START=true
+RUN_REGION_SYNC_ON_START=true
 ```
 
 ## Email Verification
@@ -74,17 +75,20 @@ docker compose up --build
 ```
 
 The image starts with `scripts/start.sh`. By default it ensures the SQLite file
-exists and then runs:
+exists, applies migrations, and syncs the region catalog without deleting user
+data:
 
 ```sh
 node scripts/ensure-sqlite-db.js
 npx prisma migrate deploy
+node scripts/sync-regions.js
 ```
 
 To run migrations separately in CI/CD:
 
 ```env
 RUN_MIGRATIONS_ON_START=false
+RUN_REGION_SYNC_ON_START=false
 ```
 
 ## Manual Operations

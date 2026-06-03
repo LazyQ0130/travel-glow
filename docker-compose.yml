@@ -38,6 +38,7 @@ services:
       SMTP_FROM: "${SMTP_FROM:?Set SMTP_FROM before starting production compose}"
       SMTP_TIMEOUT_MS: "${SMTP_TIMEOUT_MS:-10000}"
       RUN_MIGRATIONS_ON_START: "${RUN_MIGRATIONS_ON_START:-true}"
+      RUN_REGION_SYNC_ON_START: "${RUN_REGION_SYNC_ON_START:-true}"
     volumes:
       - travel_glow_uploads:/app/server/uploads
       - travel_glow_data:/data

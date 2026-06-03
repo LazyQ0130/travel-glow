@@ -35,6 +35,7 @@ const nodeFiles = [
   'scripts/cleanup-logs.js',
   'scripts/check-types.js',
   'scripts/ensure-sqlite-db.js',
+  'scripts/sync-regions.js',
   'public/account-security.js',
   'public/me-app.js',
   'prisma/seed.js',

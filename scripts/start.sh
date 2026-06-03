@@ -8,4 +8,8 @@ if [ "${RUN_MIGRATIONS_ON_START:-true}" = "true" ]; then
   npx prisma migrate deploy
 fi
 
+if [ "${RUN_REGION_SYNC_ON_START:-true}" = "true" ]; then
+  node scripts/sync-regions.js
+fi
+
 exec node server/start.js

@@ -23,6 +23,7 @@
     "check:smoke": "node scripts/smoke.js",
     "check": "npx prisma validate && npm run lint && npm run typecheck && npm run build && npm test && npm run check:smoke",
     "backup": "node scripts/backup.js",
+    "regions:sync": "node scripts/sync-regions.js",
     "logs:cleanup": "node scripts/cleanup-logs.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
