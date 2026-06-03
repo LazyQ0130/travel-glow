@@ -1315,9 +1315,10 @@
       const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
       window.TravelGlowCsrf?.capture?.(response);
       if (response.status === 401 && path !== '/auth/login') {
-        localStorage.removeItem(TOKEN_KEY);
-        window.TravelGlowAccount?.clearToken?.();
-        window.TravelGlowAccount?.openLoginDrawer?.();
+        window.TravelGlowAccount?.enterLoggedOutState?.({
+          message: '登录状态已失效，请重新登录',
+          tone: 'warning'
+        });
       }
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {

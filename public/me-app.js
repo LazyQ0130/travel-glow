@@ -179,6 +179,78 @@ function clearToken() {
   localStorage.removeItem(LEGACY_TOKEN_KEY);
 }
 
+function resetAuthenticatedData() {
+  currentUser = null;
+  currentSettings = null;
+  currentSessions = [];
+  appStats = null;
+  appPhotos = [];
+  appCheckins = [];
+  appChinaLit = { litProvinceIds: [], litCityIds: [] };
+  appWorldLit = { litCountryIds: [], litSpecialRegionIds: [] };
+}
+
+function setAppShellVisible(visible) {
+  document.querySelectorAll('.page').forEach((page) => {
+    page.classList.toggle('hidden', !visible);
+  });
+  document.querySelector('nav')?.classList.toggle('hidden', !visible);
+  document.getElementById('fab')?.classList.toggle('hidden', !visible);
+}
+
+function ensureAuthGate() {
+  let gate = document.getElementById('auth-gate');
+  if (gate) return gate;
+
+  gate = document.createElement('section');
+  gate.id = 'auth-gate';
+  gate.className = 'hidden min-h-[calc(100vh-8rem)] items-center justify-center pb-24';
+  document.querySelector('main')?.prepend(gate);
+  return gate;
+}
+
+function renderAuthGate() {
+  const gate = ensureAuthGate();
+  gate.innerHTML = `
+    <div class="w-full max-w-xl rounded-3xl border border-cyan-300/10 bg-[#111827]/70 p-6 text-center shadow-[0_0_42px_rgba(6,182,212,.12)] backdrop-blur-md">
+      <div class="mx-auto grid h-16 w-16 place-items-center rounded-2xl border border-cyan-300/20 bg-cyan-400/10 text-[#06B6D4]">
+        <i data-lucide="shield" class="h-8 w-8"></i>
+      </div>
+      <p class="mt-5 text-sm text-[#06B6D4]">Travel Glow Account</p>
+      <h1 class="mt-2 text-2xl font-semibold text-[#F9FAFB]">请先登录旅光账号</h1>
+      <p class="mt-3 text-sm leading-6 text-[#9CA3AF]">登录后进入应用主体，查看你的首页、中国足迹、世界足迹和旅行相册。</p>
+      <div class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <button class="auth-gate-login rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-400 px-5 py-4 font-semibold text-[#030712]" type="button">登录</button>
+        <button class="auth-gate-register rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-5 py-4 font-semibold text-[#06B6D4]" type="button">注册并登录</button>
+      </div>
+    </div>
+  `;
+  gate.querySelector('.auth-gate-login')?.addEventListener('click', openLoginDrawer);
+  gate.querySelector('.auth-gate-register')?.addEventListener('click', openRegisterDrawer);
+  createIcons();
+  return gate;
+}
+
+function enterLoggedOutState({ message = '', tone = 'warning' } = {}) {
+  clearToken();
+  resetAuthenticatedData();
+  closeDrawer();
+  setAppShellVisible(false);
+  const gate = renderAuthGate();
+  gate.classList.remove('hidden');
+  gate.classList.add('flex');
+  if (message) showToast(message, tone);
+}
+
+async function enterLoggedInState(options = {}) {
+  const gate = ensureAuthGate();
+  gate.classList.add('hidden');
+  gate.classList.remove('flex');
+  await loadAuthenticatedApp(options);
+  setAppShellVisible(true);
+  setTab(currentSettings?.defaultHomeTab || 'home');
+}
+
 async function apiRequest(path, options = {}) {
   // 通用 API 请求封装：自动带 JWT，自动处理 JSON，401 时回到未登录态。
   const { suppressErrorToast = false, ...requestOptions } = options;
@@ -201,15 +273,8 @@ async function apiRequest(path, options = {}) {
   };
   if (shouldHandleAuthExpired(path, response)) {
     const error = buildApiError('登录状态已失效，请重新登录');
-    clearToken();
-    currentUser = null;
-    currentSettings = null;
-    currentSessions = [];
-    renderLoginRequiredApp();
-    setTab('me');
-    showToast(error.message, 'warning');
+    enterLoggedOutState({ message: error.message, tone: 'warning' });
     error.toastShown = true;
-    openLoginDrawer();
     throw error;
   }
   if (!response.ok) {
@@ -468,6 +533,7 @@ function renderLoginRequiredPage(pageId, title, description, icon = 'lock-keyhol
 }
 
 function renderLoginRequiredApp() {
+  return enterLoggedOutState();
   appStats = null;
   appPhotos = [];
   appCheckins = [];
@@ -488,7 +554,7 @@ async function submitAuth(path, body, {
   const result = await apiRequest(path, { method: 'POST', body: JSON.stringify(body) });
   saveToken(result.token);
   try {
-    await loadAuthenticatedApp({ suppressErrorToast: true });
+    await enterLoggedInState({ suppressErrorToast: true });
     closeDrawer();
     showToast(successMessage, 'success');
   } catch (error) {
@@ -736,6 +802,7 @@ function openRegisterDrawer() {
 
 async function logout() {
   if (authToken) await apiRequest('/auth/logout', { method: 'POST', body: JSON.stringify({}) }).catch(() => {});
+  return enterLoggedOutState({ message: '已退出登录', tone: 'success' });
   clearToken();
   currentUser = null;
   currentSettings = null;
@@ -969,6 +1036,8 @@ window.TravelGlowAccount = {
   renderMePage,
   saveSettings,
   logout,
+  enterLoggedOutState,
+  enterLoggedInState,
   openLoginDrawer,
   clearToken,
   showToast,
@@ -981,18 +1050,13 @@ async function initPersonalCenter() {
   createIcons();
   if (authToken) {
     try {
-      await loadAuthenticatedApp();
+      await enterLoggedInState();
     } catch (error) {
-      clearToken();
-      currentUser = null;
-      currentSettings = null;
+      enterLoggedOutState();
     }
   }
   if (!currentUser) {
-    renderLoginRequiredApp();
-    setTab('home');
-  } else {
-    setTab(currentSettings?.defaultHomeTab || 'home');
+    enterLoggedOutState();
   }
   bindAuthenticatedControls();
   document.getElementById('fab')?.addEventListener('click', openAddDrawer);
