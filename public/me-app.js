@@ -116,6 +116,12 @@ function shouldHandleAuthExpired(path, response) {
   return response.status === 401 && !AUTH_PUBLIC_PATHS.has(path);
 }
 
+function isAuthExpiredError(error) {
+  return Number(error?.status) === 401
+    || error?.code === 'SESSION_REQUIRED'
+    || error?.code === 'SESSION_REVOKED';
+}
+
 function getApiErrorMessage(path, data, fallbackMessage) {
   const isEmailCodeError = (path === '/auth/login/email' || path === '/auth/register')
     && (
@@ -1050,14 +1056,34 @@ window.TravelGlowAccount = {
 
 async function initPersonalCenter() {
   createIcons();
+  let authLoadFailed = false;
   if (authToken) {
     try {
       await enterLoggedInState();
     } catch (error) {
-      enterLoggedOutState();
+      authLoadFailed = true;
+      if (isAuthExpiredError(error)) {
+        enterLoggedOutState();
+      } else {
+        console.error(error);
+        if (currentUser) {
+          setAppShellVisible(true);
+          const gate = ensureAuthGate();
+          gate.classList.add('hidden');
+          gate.classList.remove('flex');
+          renderMePage();
+          bindAuthenticatedControls();
+        } else {
+          setAppShellVisible(false);
+          const gate = renderAuthGate();
+          gate.classList.remove('hidden');
+          gate.classList.add('flex');
+        }
+        showToast(error?.message || '页面数据加载失败，请刷新后重试', 'error');
+      }
     }
   }
-  if (!currentUser) {
+  if (!currentUser && !authLoadFailed) {
     enterLoggedOutState();
   }
   bindAuthenticatedControls();

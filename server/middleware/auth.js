@@ -37,6 +37,9 @@ async function auth(req, res, next) {
     req.user = user;
     next();
   } catch (error) {
+    if (!(error instanceof jwt.JsonWebTokenError)) {
+      return next(error);
+    }
     return res.status(401).json({ message: '登录状态已失效' });
   }
 }

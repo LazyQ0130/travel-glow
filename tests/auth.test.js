@@ -127,6 +127,30 @@ test('protected endpoints reject missing and invalid tokens with uniform error f
   assert.equal(typeof invalid.message, 'string');
 });
 
+test('auth middleware does not convert session activity write failures into 401', async () => {
+  const { user, username, password } = await createAuthUser('authwrite');
+  const login = await loginAs(username, password);
+  const originalUpdate = prisma.loginSession.update;
+
+  prisma.loginSession.update = async () => {
+    throw new Error('session activity write failed');
+  };
+
+  try {
+    const response = await request('/auth/me', {
+      headers: { Authorization: `Bearer ${login.token}` }
+    });
+    const body = await json(response);
+
+    assert.notEqual(response.status, 401);
+    assert.equal(response.status, 500);
+    assert.equal(body.code, 'INTERNAL_ERROR');
+  } finally {
+    prisma.loginSession.update = originalUpdate;
+    await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), username: null } });
+  }
+});
+
 test('unsafe requests require a valid CSRF token', async () => {
   const response = await fetch(`${baseUrl}/auth/login`, {
     method: 'POST',
