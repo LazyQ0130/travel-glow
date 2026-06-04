@@ -174,6 +174,8 @@
       }
       renderFallbackIcons();
     }
+    createIcons();
+    window.addEventListener('load', createIcons);
 
     function restoreAuthenticatedPages() {
       authenticatedPageTemplates.forEach((html, name) => {
