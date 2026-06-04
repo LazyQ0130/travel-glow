@@ -174,8 +174,6 @@
       }
       renderFallbackIcons();
     }
-    createIcons();
-    window.addEventListener('load', createIcons);
 
     function restoreAuthenticatedPages() {
       authenticatedPageTemplates.forEach((html, name) => {
@@ -1288,8 +1286,7 @@
     });
 
     const API_BASE = '/api';
-    const AUTH_TOKEN_KEY = 'travel_glow_token';
-    const LEGACY_TOKEN_KEY = 'travel-glow-token';
+    const TOKEN_KEY = 'travel-glow-token';
 
     let appStats = null;
     let appPhotos = [];
@@ -1299,16 +1296,11 @@
     let documentSearchDismissBound = false;
 
     function getToken() {
-      const token = localStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem(LEGACY_TOKEN_KEY);
-      if (token && !localStorage.getItem(LEGACY_TOKEN_KEY)) {
-        localStorage.setItem(LEGACY_TOKEN_KEY, token);
-      }
-      return token;
+      return localStorage.getItem(TOKEN_KEY);
     }
 
     function setToken(token) {
-      localStorage.setItem(AUTH_TOKEN_KEY, token);
-      localStorage.setItem(LEGACY_TOKEN_KEY, token);
+      localStorage.setItem(TOKEN_KEY, token);
     }
 
     async function apiFetch(path, options = {}) {

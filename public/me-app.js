@@ -1050,22 +1050,18 @@ window.TravelGlowAccount = {
 
 async function initPersonalCenter() {
   createIcons();
-  setAppShellVisible(false);
-  renderAuthGate();
-  if (!authToken) {
-    enterLoggedOutState();
-  } else {
+  if (authToken) {
     try {
       await enterLoggedInState();
     } catch (error) {
-      console.error(error);
-      enterLoggedOutState({ message: '登录状态已失效，请重新登录', tone: 'warning' });
+      enterLoggedOutState();
     }
   }
-  bindAuthenticatedControls();
-  if (typeof openAddDrawer === 'function') {
-    document.getElementById('fab')?.addEventListener('click', openAddDrawer);
+  if (!currentUser) {
+    enterLoggedOutState();
   }
+  bindAuthenticatedControls();
+  document.getElementById('fab')?.addEventListener('click', openAddDrawer);
 }
 
 initPersonalCenter().catch((error) => {
