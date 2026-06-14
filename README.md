@@ -1,5 +1,10 @@
 # 旅光 Travel Glow
 
+## 在线访问
+
+- [https://www.travelglow.top](https://www.travelglow.top)
+- [https://travelglow.top](https://travelglow.top)
+
 Travel Glow 是一个 Express + Prisma + 原生前端的旅行打卡练习项目。当前版本加入了更接近企业级后端的基础能力：安全响应头、生产配置校验、结构化日志、服务端 session 校验、审计日志、软删除、分页、健康检查、Docker 部署配置和自动化测试。
 
 ## 技术栈
